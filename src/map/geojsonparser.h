@@ -41,6 +41,15 @@ public:
     const GeoFeature* findByCode(const QString& code) const;
     const GeoFeature* findByName(const QString& name) const;
 
+    // Get polygons for a feature (used by GeoOverlayModel)
+    QVector<QPolygonF> getPolygonsForFeature(const QString& code, const QString& name) const;
+
+    // Get all regions for a country
+    Q_INVOKABLE QVariantList regionsForCountry(const QString& countryName) const;
+
+    // Get all cities with their coordinates
+    Q_INVOKABLE QVariantList allCities() const;
+
 signals:
     void loaded();
     void loadError(const QString& error);

@@ -377,9 +377,9 @@ Item {
         }
     }
 
-    // Region tracks section (below keyframes)
-    RegionTrackTimeline {
-        id: regionTrackTimeline
+    // Geographic overlay tracks section (below keyframes)
+    GeoOverlayTimeline {
+        id: geoOverlayTimeline
         anchors.top: scrubOverlay.bottom
         anchors.left: parent.left
         anchors.right: parent.right
@@ -387,7 +387,7 @@ Item {
         anchors.bottomMargin: Theme.spacingSmall
         pixelsPerSecond: timeline.pixelsPerSecond
         totalDuration: timeline.effectiveExtent
-        visible: RegionTracks.count > 0 || regionTrackTimeline.height > 40
+        visible: GeoOverlays.count > 0 || geoOverlayTimeline.height > 40
 
         // Sync scroll with main timeline
         contentX: timelineFlickable.contentX
@@ -406,15 +406,6 @@ Item {
         anchors.margins: Theme.spacingSmall
         spacing: Theme.spacingSmall
 
-        // Add region track button
-        Button {
-            text: "+ Region"
-            font.pixelSize: 11
-            onClicked: regionPickerDialog.open()
-        }
-
-        Item { width: Theme.spacingLarge }
-
         Text {
             text: qsTr("Zoom:")
             color: Theme.textColorDim
@@ -427,15 +418,6 @@ Item {
             to: 8.0
             value: Settings.timelineZoom
             onMoved: Settings.timelineZoom = value
-        }
-    }
-
-    // Region picker for adding tracks
-    RegionPicker {
-        id: regionPickerDialog
-        onRegionSelected: (code, name) => {
-            let startTime = AnimController ? AnimController.currentTime : 0
-            RegionTracks.addTrack(code, name, "country", startTime)
         }
     }
 

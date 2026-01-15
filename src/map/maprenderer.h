@@ -11,6 +11,7 @@ class MapCamera;
 class GeoJsonParser;
 class OverlayManager;
 class RegionTrackModel;
+class GeoOverlayModel;
 class FrameBuffer;
 struct GeoFeature;
 
@@ -43,6 +44,7 @@ public:
     void setGeoJson(GeoJsonParser* geojson);
     void setOverlayManager(OverlayManager* overlays);
     void setRegionTrackModel(RegionTrackModel* regionTracks);
+    void setGeoOverlayModel(GeoOverlayModel* geoOverlays);
 
     MapCamera* camera() const { return m_camera; }
     void setCamera(MapCamera* camera);
@@ -131,6 +133,7 @@ private:
     void renderTiles(QPainter* painter);
     void renderHighlights(QPainter* painter);
     void renderRegionTracks(QPainter* painter, double currentTime, double totalDuration);
+    void renderGeoOverlays(QPainter* painter, double currentTime, double totalDuration);
     void renderCountryBorders(QPainter* painter);
     void renderCityMarkers(QPainter* painter);
     void renderOverlays(QPainter* painter, double currentTime);
@@ -145,6 +148,7 @@ private:
     GeoJsonParser* m_geojson = nullptr;
     OverlayManager* m_overlays = nullptr;
     RegionTrackModel* m_regionTracks = nullptr;
+    GeoOverlayModel* m_geoOverlays = nullptr;
     FrameBuffer* m_frameBuffer = nullptr;
 
     bool m_showCountryLabels = true;

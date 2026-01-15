@@ -55,6 +55,7 @@ set(SOURCES
     src/animation/keyframe.cpp
     src/animation/keyframemodel.cpp
     src/animation/regiontrackmodel.cpp
+    src/animation/geooverlaymodel.cpp
     src/animation/interpolator.cpp
     src/animation/animationcontroller.cpp
     src/animation/framebuffer.cpp
@@ -82,6 +83,8 @@ set(HEADERS
     src/animation/keyframemodel.h
     src/animation/regiontrack.h
     src/animation/regiontrackmodel.h
+    src/animation/geooverlay.h
+    src/animation/geooverlaymodel.h
     src/animation/interpolator.h
     src/animation/easingfunctions.h
     src/animation/animationcontroller.h
@@ -144,6 +147,7 @@ set(QML_FILES
     qml/components/ArrowEditor.qml
     qml/components/RegionPicker.qml
     qml/components/RegionTrackTimeline.qml
+    qml/components/GeoOverlayTimeline.qml
     qml/components/ColorPicker.qml
     qml/components/ExportDialog.qml
     qml/components/StyledButton.qml

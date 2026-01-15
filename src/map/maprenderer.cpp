@@ -7,6 +7,8 @@
 #include "../overlays/regionhighlight.h"
 #include "../animation/framebuffer.h"
 #include "../animation/regiontrackmodel.h"
+#include "../animation/geooverlaymodel.h"
+#include "../animation/geooverlay.h"
 #include <QPainter>
 #include <QtMath>
 #include <QTransform>
@@ -43,6 +45,7 @@ void MapRenderer::paint(QPainter* painter) {
     renderCountryBorders(painter);
     renderHighlights(painter);
     renderRegionTracks(painter, m_currentAnimationTime, m_totalDuration);
+    renderGeoOverlays(painter, m_currentAnimationTime, m_totalDuration);
     renderCityMarkers(painter);
     renderOverlays(painter, m_currentAnimationTime);
     renderLabels(painter);
@@ -332,6 +335,102 @@ void MapRenderer::renderRegionTracks(QPainter* painter, double currentTime, doub
     }
 }
 
+void MapRenderer::renderGeoOverlays(QPainter* painter, double currentTime, double totalDuration) {
+    if (!m_camera || !m_geoOverlays) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    // Get all visible overlays at current time with their calculated opacities
+    auto visibleOverlays = m_geoOverlays->visibleOverlaysAtTime(currentTime, totalDuration);
+
+    for (const auto& overlayPair : visibleOverlays) {
+        const GeoOverlay* overlay = overlayPair.first;
+        double opacity = overlayPair.second;
+
+        if (opacity <= 0.0) continue;
+
+        // Apply opacity to colors
+        QColor fillColor = overlay->fillColor;
+        fillColor.setAlphaF(fillColor.alphaF() * opacity);
+
+        QColor borderColor = overlay->borderColor;
+        borderColor.setAlphaF(borderColor.alphaF() * opacity);
+
+        if (overlay->type == GeoOverlayType::City) {
+            // Render city as a marker circle
+            QPointF screenPoint = m_camera->geoToScreen(overlay->latitude, overlay->longitude, viewW, viewH);
+
+            // Check if on screen
+            if (screenPoint.x() >= -50 && screenPoint.x() <= viewW + 50 &&
+                screenPoint.y() >= -50 && screenPoint.y() <= viewH + 50) {
+
+                double radius = overlay->markerRadius;
+
+                // Draw outer circle (border)
+                if (borderColor.alpha() > 0) {
+                    painter->setPen(QPen(borderColor, 2));
+                    painter->setBrush(fillColor);
+                    painter->drawEllipse(screenPoint, radius, radius);
+                } else {
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(fillColor);
+                    painter->drawEllipse(screenPoint, radius, radius);
+                }
+
+                // Draw label if enabled
+                if (overlay->showLabel) {
+                    QColor textColor = Qt::white;
+                    textColor.setAlphaF(opacity);
+
+                    painter->setPen(textColor);
+                    QFont font = painter->font();
+                    font.setPixelSize(11);
+                    font.setBold(true);
+                    painter->setFont(font);
+
+                    // Draw text with shadow for readability
+                    QColor shadowColor(0, 0, 0, static_cast<int>(180 * opacity));
+                    painter->setPen(shadowColor);
+                    painter->drawText(QPointF(screenPoint.x() + radius + 5 + 1, screenPoint.y() + 4 + 1), overlay->name);
+
+                    painter->setPen(textColor);
+                    painter->drawText(QPointF(screenPoint.x() + radius + 5, screenPoint.y() + 4), overlay->name);
+                }
+            }
+        } else {
+            // Render country/region polygons
+            for (const QPolygonF& geoPoly : overlay->polygons) {
+                QPolygonF screenPoly;
+                screenPoly.reserve(geoPoly.size());
+
+                for (const QPointF& geoPoint : geoPoly) {
+                    // Polygons store (lat=x, lon=y) after parsing
+                    QPointF screenPoint = m_camera->geoToScreen(geoPoint.x(), geoPoint.y(), viewW, viewH);
+                    screenPoly.append(screenPoint);
+                }
+
+                if (!screenPoly.isEmpty()) {
+                    // Draw fill
+                    if (fillColor.alpha() > 0) {
+                        painter->setPen(Qt::NoPen);
+                        painter->setBrush(fillColor);
+                        painter->drawPolygon(screenPoly);
+                    }
+
+                    // Draw border
+                    if (borderColor.alpha() > 0 && overlay->borderWidth > 0) {
+                        painter->setPen(QPen(borderColor, overlay->borderWidth));
+                        painter->setBrush(Qt::NoBrush);
+                        painter->drawPolygon(screenPoly);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void MapRenderer::renderOverlays(QPainter* painter, double currentTime) {
     if (!m_camera || !m_overlays) return;
 
@@ -508,6 +607,13 @@ void MapRenderer::setRegionTrackModel(RegionTrackModel* regionTracks) {
     m_regionTracks = regionTracks;
     if (m_regionTracks) {
         connect(m_regionTracks, &RegionTrackModel::dataModified, this, &MapRenderer::requestUpdate);
+    }
+}
+
+void MapRenderer::setGeoOverlayModel(GeoOverlayModel* geoOverlays) {
+    m_geoOverlays = geoOverlays;
+    if (m_geoOverlays) {
+        connect(m_geoOverlays, &GeoOverlayModel::dataModified, this, &MapRenderer::requestUpdate);
     }
 }
 

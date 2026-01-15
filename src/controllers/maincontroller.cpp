@@ -8,6 +8,7 @@
 #include "../map/geojsonparser.h"
 #include "../animation/keyframemodel.h"
 #include "../animation/regiontrackmodel.h"
+#include "../animation/geooverlaymodel.h"
 #include "../animation/animationcontroller.h"
 #include "../animation/framebuffer.h"
 #include "../overlays/overlaymanager.h"
@@ -21,6 +22,7 @@ MainController::MainController(QObject* parent)
     m_settings = new Settings(this);
     m_keyframes = new KeyframeModel(this);
     m_regionTracks = new RegionTrackModel(this);
+    m_geoOverlays = new GeoOverlayModel(this);
     m_overlays = new OverlayManager(this);
     m_camera = new MapCamera(this);
     m_tileProvider = new TileProvider(this);
@@ -120,10 +122,17 @@ void MainController::loadGeoJsonData() {
         qWarning() << "Failed to load states GeoJSON from resources";
     }
 
-    // Load built-in major world cities
-    m_geojson->loadBuiltInCities();
+    // Load Natural Earth 10m cities (appends to existing features)
+    if (!m_geojson->appendFromResource(":/geojson/ne_10m_cities.geojson")) {
+        qWarning() << "Failed to load cities GeoJSON from resources";
+        // Fallback to built-in cities
+        m_geojson->loadBuiltInCities();
+    }
 
     qDebug() << "Loaded" << m_geojson->featureCount() << "geographic features";
+
+    // Set the parser on GeoOverlayModel so it can load geometry
+    m_geoOverlays->setGeoJsonParser(m_geojson);
 }
 
 void MainController::addKeyframeAtCurrentPosition() {
@@ -227,6 +236,7 @@ void MainController::setMapRenderer(MapRenderer* renderer) {
         m_renderer->setGeoJson(m_geojson);
         m_renderer->setOverlayManager(m_overlays);
         m_renderer->setRegionTrackModel(m_regionTracks);
+        m_renderer->setGeoOverlayModel(m_geoOverlays);
         m_renderer->setFrameBuffer(m_frameBuffer);
         m_exporter->setMapRenderer(m_renderer);
 

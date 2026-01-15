@@ -260,6 +260,85 @@ const GeoFeature* GeoJsonParser::findByName(const QString& name) const {
     return nullptr;
 }
 
+QVector<QPolygonF> GeoJsonParser::getPolygonsForFeature(const QString& code, const QString& name) const {
+    // First try to find by code
+    if (!code.isEmpty()) {
+        const GeoFeature* feature = findByCode(code);
+        if (feature) {
+            return feature->polygons;
+        }
+    }
+
+    // Then try by name
+    if (!name.isEmpty()) {
+        const GeoFeature* feature = findByName(name);
+        if (feature) {
+            return feature->polygons;
+        }
+    }
+
+    return QVector<QPolygonF>();
+}
+
+QVariantList GeoJsonParser::regionsForCountry(const QString& countryName) const {
+    QVariantList result;
+
+    // Find the country code first
+    QString countryCode;
+    for (const auto& feature : m_features) {
+        if (feature.type == "country" && feature.name.compare(countryName, Qt::CaseInsensitive) == 0) {
+            countryCode = feature.code;
+            break;
+        }
+    }
+
+    // Now find all regions with that country code
+    for (const auto& feature : m_features) {
+        if (feature.type == "region") {
+            QString parentCode = feature.properties.value("iso_a2").toString();
+            QString parentName = feature.properties.value("admin").toString();
+
+            if ((!countryCode.isEmpty() && parentCode == countryCode) ||
+                parentName.compare(countryName, Qt::CaseInsensitive) == 0) {
+                QVariantMap item;
+                item["name"] = feature.name;
+                item["code"] = feature.code;
+                item["countryCode"] = parentCode;
+                item["countryName"] = parentName;
+                result.append(item);
+            }
+        }
+    }
+
+    return result;
+}
+
+QVariantList GeoJsonParser::allCities() const {
+    QVariantList result;
+    for (const auto& feature : m_features) {
+        if (feature.type == "city" && !feature.name.isEmpty()) {
+            QVariantMap item;
+            item["name"] = feature.name;
+            item["lat"] = feature.centroid.x();
+            item["lon"] = feature.centroid.y();
+            item["country"] = feature.properties.value("country").toString();
+            item["countryName"] = feature.properties.value("adm0name").toString();
+            if (item["countryName"].toString().isEmpty()) {
+                item["countryName"] = feature.code;  // Fallback to code
+            }
+            item["population"] = feature.properties.value("pop_max", 0).toInt();
+            result.append(item);
+        }
+    }
+
+    // Sort by population (largest first)
+    std::sort(result.begin(), result.end(), [](const QVariant& a, const QVariant& b) {
+        return a.toMap()["population"].toInt() > b.toMap()["population"].toInt();
+    });
+
+    return result;
+}
+
 void GeoJsonParser::loadBuiltInCities() {
     // Major world cities with population data
     struct CityData {

@@ -7,6 +7,7 @@ class Settings;
 class ProjectManager;
 class KeyframeModel;
 class RegionTrackModel;
+class GeoOverlayModel;
 class OverlayManager;
 class MapCamera;
 class MapRenderer;
@@ -22,6 +23,7 @@ Q_DECLARE_OPAQUE_POINTER(FrameBuffer*)
 Q_DECLARE_OPAQUE_POINTER(ProjectManager*)
 Q_DECLARE_OPAQUE_POINTER(KeyframeModel*)
 Q_DECLARE_OPAQUE_POINTER(RegionTrackModel*)
+Q_DECLARE_OPAQUE_POINTER(GeoOverlayModel*)
 Q_DECLARE_OPAQUE_POINTER(OverlayManager*)
 Q_DECLARE_OPAQUE_POINTER(MapCamera*)
 Q_DECLARE_OPAQUE_POINTER(MapRenderer*)
@@ -37,6 +39,7 @@ class MainController : public QObject {
     Q_PROPERTY(ProjectManager* projectManager READ projectManager CONSTANT)
     Q_PROPERTY(KeyframeModel* keyframes READ keyframes CONSTANT)
     Q_PROPERTY(RegionTrackModel* regionTracks READ regionTracks CONSTANT)
+    Q_PROPERTY(GeoOverlayModel* geoOverlays READ geoOverlays CONSTANT)
     Q_PROPERTY(OverlayManager* overlays READ overlays CONSTANT)
     Q_PROPERTY(MapCamera* camera READ camera CONSTANT)
     Q_PROPERTY(AnimationController* animation READ animation CONSTANT)
@@ -53,6 +56,7 @@ public:
     ProjectManager* projectManager() const { return m_projectManager; }
     KeyframeModel* keyframes() const { return m_keyframes; }
     RegionTrackModel* regionTracks() const { return m_regionTracks; }
+    GeoOverlayModel* geoOverlays() const { return m_geoOverlays; }
     OverlayManager* overlays() const { return m_overlays; }
     MapCamera* camera() const { return m_camera; }
     AnimationController* animation() const { return m_animation; }
@@ -93,6 +97,7 @@ private:
     ProjectManager* m_projectManager = nullptr;
     KeyframeModel* m_keyframes = nullptr;
     RegionTrackModel* m_regionTracks = nullptr;
+    GeoOverlayModel* m_geoOverlays = nullptr;
     OverlayManager* m_overlays = nullptr;
     MapCamera* m_camera = nullptr;
     MapRenderer* m_renderer = nullptr;

@@ -15,6 +15,7 @@
 #include "animation/keyframe.h"
 #include "animation/keyframemodel.h"
 #include "animation/regiontrackmodel.h"
+#include "animation/geooverlaymodel.h"
 #include "animation/animationcontroller.h"
 #include "overlays/overlaymanager.h"
 #include "export/videoexporter.h"
@@ -45,6 +46,7 @@ int main(int argc, char *argv[])
     context->setContextProperty("ProjectManager", mainController.projectManager());
     context->setContextProperty("Keyframes", mainController.keyframes());
     context->setContextProperty("RegionTracks", mainController.regionTracks());
+    context->setContextProperty("GeoOverlays", mainController.geoOverlays());
     context->setContextProperty("Overlays", mainController.overlays());
     context->setContextProperty("Camera", mainController.camera());
     context->setContextProperty("AnimController", mainController.animation());

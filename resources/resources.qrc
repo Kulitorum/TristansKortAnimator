@@ -11,5 +11,6 @@
         <file>geojson/countries.geojson</file>
         <file>geojson/ne_50m_countries.geojson</file>
         <file>geojson/ne_50m_states.geojson</file>
+        <file>geojson/ne_10m_cities.geojson</file>
     </qresource>
 </RCC>
