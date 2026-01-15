@@ -1,0 +1,15 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/app_icon.png</file>
+        <file>icons/marker_pin.svg</file>
+        <file>icons/arrow.svg</file>
+        <file>icons/play.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/stop.svg</file>
+        <file>icons/keyframe.svg</file>
+        <file>icons/export.svg</file>
+        <file>geojson/countries.geojson</file>
+        <file>geojson/ne_50m_countries.geojson</file>
+        <file>geojson/ne_50m_states.geojson</file>
+    </qresource>
+</RCC>

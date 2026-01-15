@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Country",
+        "iso_a3": "SMP",
+        "continent": "Europe"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[10, 50], [15, 50], [15, 55], [10, 55], [10, 50]]]
+      }
+    }
+  ]
+}

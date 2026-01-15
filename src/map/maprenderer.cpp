@@ -1,0 +1,901 @@
+#include "maprenderer.h"
+#include "tileprovider.h"
+#include "tilecache.h"
+#include "mapcamera.h"
+#include "geojsonparser.h"
+#include "../overlays/overlaymanager.h"
+#include "../overlays/regionhighlight.h"
+#include "../animation/framebuffer.h"
+#include "../animation/regiontrackmodel.h"
+#include <QPainter>
+#include <QtMath>
+#include <QTransform>
+#include <QMetaObject>
+#include <QSet>
+
+MapRenderer::MapRenderer(QQuickItem* parent)
+    : QQuickPaintedItem(parent)
+{
+    setAntialiasing(true);
+    setRenderTarget(QQuickPaintedItem::FramebufferObject);
+}
+
+void MapRenderer::paint(QPainter* painter) {
+    if (!m_camera) return;
+
+    // Check if we can use a cached frame
+    if (m_useFrameBuffer && m_frameBuffer && m_frameBuffer->hasFrame(m_currentAnimationTime)) {
+        QImage cachedFrame = m_frameBuffer->getFrame(m_currentAnimationTime);
+        if (!cachedFrame.isNull()) {
+            painter->drawImage(QRectF(0, 0, width(), height()), cachedFrame);
+            emit renderingComplete();
+            return;
+        }
+    }
+
+    painter->save();
+
+    // Apply camera transforms (bearing and tilt)
+    applyTransforms(painter);
+
+    // Render layers in order
+    renderTiles(painter);
+    renderCountryBorders(painter);
+    renderHighlights(painter);
+    renderRegionTracks(painter, m_currentAnimationTime, m_totalDuration);
+    renderCityMarkers(painter);
+    renderOverlays(painter, m_currentAnimationTime);
+    renderLabels(painter);
+
+    resetTransforms(painter);
+    painter->restore();
+
+    // Store frame in buffer if not already cached - DISABLED for debugging
+    /*
+    if (m_useFrameBuffer && m_frameBuffer && !m_frameBuffer->hasFrame(m_currentAnimationTime)) {
+        QImage frame = renderToImage(static_cast<int>(width()), static_cast<int>(height()));
+        m_frameBuffer->storeFrame(m_currentAnimationTime, frame);
+    }
+    */
+
+    emit renderingComplete();
+}
+
+void MapRenderer::applyTransforms(QPainter* painter) {
+    if (!m_camera) return;
+
+    // Apply tilt (fake 3D perspective)
+    if (m_camera->tilt() > 0) {
+        QTransform tiltTransform;
+        // Move origin to bottom center for perspective effect
+        tiltTransform.translate(width() / 2, height());
+        // Scale vertically to simulate perspective (objects at top appear smaller)
+        double tiltFactor = 1.0 - (m_camera->tilt() / 90.0) * 0.5;
+        tiltTransform.scale(1.0, tiltFactor);
+        tiltTransform.translate(-width() / 2, -height());
+        painter->setTransform(tiltTransform, true);
+    }
+
+    // Apply bearing (rotation)
+    if (m_camera->bearing() != 0) {
+        painter->translate(width() / 2, height() / 2);
+        painter->rotate(-m_camera->bearing());
+        painter->translate(-width() / 2, -height() / 2);
+    }
+}
+
+void MapRenderer::resetTransforms(QPainter* painter) {
+    painter->resetTransform();
+}
+
+void MapRenderer::renderTiles(QPainter* painter) {
+    if (!m_camera || !m_tileProvider) return;
+
+    int zoomLevel = m_camera->zoomLevel();
+    double scale = std::pow(2.0, m_camera->zoom() - zoomLevel);
+
+    // Get visible tile range
+    auto range = m_camera->visibleTileRange(width(), height());
+
+    // Calculate center tile position
+    double centerLon = m_camera->longitude();
+    double centerLat = m_camera->latitude();
+    double n = std::pow(2.0, zoomLevel);
+
+    double centerTileX = (centerLon + 180.0) / 360.0 * n;
+    double latRad = centerLat * M_PI / 180.0;
+    double centerTileY = (1.0 - std::log(std::tan(latRad) + 1.0 / std::cos(latRad)) / M_PI) / 2.0 * n;
+
+    // Calculate offset for sub-tile positioning
+    double offsetX = (centerTileX - std::floor(centerTileX)) * TILE_SIZE * scale;
+    double offsetY = (centerTileY - std::floor(centerTileY)) * TILE_SIZE * scale;
+
+    int centerTileXInt = static_cast<int>(std::floor(centerTileX));
+    int centerTileYInt = static_cast<int>(std::floor(centerTileY));
+
+    // Render tiles
+    for (int ty = range.minY; ty <= range.maxY; ty++) {
+        for (int tx = range.minX; tx <= range.maxX; tx++) {
+            // Calculate screen position for this tile
+            double screenX = width() / 2.0 + (tx - centerTileXInt) * TILE_SIZE * scale - offsetX;
+            double screenY = height() / 2.0 + (ty - centerTileYInt) * TILE_SIZE * scale - offsetY;
+
+            // Check cache first
+            int source = static_cast<int>(TileSource::EsriSatellite);
+            if (m_tileProvider) {
+                source = m_tileProvider->currentSource();
+            }
+
+            QImage tile;
+            if (m_tileCache && m_tileCache->contains(source, tx, ty, zoomLevel)) {
+                tile = m_tileCache->get(source, tx, ty, zoomLevel);
+            } else if (m_tileProvider) {
+                // Request tile from provider (use queued connection for thread safety)
+                QMetaObject::invokeMethod(m_tileProvider, "requestTile",
+                                          Qt::QueuedConnection,
+                                          Q_ARG(int, tx), Q_ARG(int, ty), Q_ARG(int, zoomLevel));
+                // Draw placeholder
+                painter->fillRect(QRectF(screenX, screenY, TILE_SIZE * scale, TILE_SIZE * scale),
+                                 QColor(30, 30, 50));
+                continue;
+            }
+
+            if (!tile.isNull()) {
+                QRectF destRect(screenX, screenY, TILE_SIZE * scale, TILE_SIZE * scale);
+                painter->drawImage(destRect, tile);
+            }
+        }
+    }
+}
+
+void MapRenderer::renderHighlights(QPainter* painter) {
+    if (!m_camera || !m_geojson || !m_geojson->isLoaded()) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    // Collect highlighted region codes (from both internal highlights and overlay system)
+    QSet<QString> highlightedCodes;
+
+    // Add internal highlights
+    for (auto it = m_highlights.constBegin(); it != m_highlights.constEnd(); ++it) {
+        highlightedCodes.insert(it.key());
+    }
+
+    // Add region highlights from overlay manager
+    QVector<RegionHighlight*> regionOverlays;
+    if (m_overlays) {
+        auto visibleOverlays = m_overlays->visibleOverlaysAtTime(0); // TODO: Get actual animation time
+        for (auto* overlay : visibleOverlays) {
+            if (auto* regionHighlight = qobject_cast<RegionHighlight*>(overlay)) {
+                regionOverlays.append(regionHighlight);
+                highlightedCodes.insert(regionHighlight->regionCode());
+            }
+        }
+    }
+
+    // If shading non-highlighted is enabled, draw all countries with dim shade first
+    if (m_shadeNonHighlighted && !highlightedCodes.isEmpty()) {
+        QColor shadeColor(0, 0, 0, static_cast<int>((1.0 - m_nonHighlightedOpacity) * 150));
+
+        for (const auto& feature : m_geojson->features()) {
+            if (feature.type == "country" && !highlightedCodes.contains(feature.code)) {
+                for (const QPolygonF& geoPoly : feature.polygons) {
+                    QPolygonF screenPoly;
+                    screenPoly.reserve(geoPoly.size());
+
+                    for (const QPointF& geoPoint : geoPoly) {
+                        // Polygons store (lat=x, lon=y) after parsing
+                        QPointF screenPoint = m_camera->geoToScreen(geoPoint.x(), geoPoint.y(), viewW, viewH);
+                        screenPoly.append(screenPoint);
+                    }
+
+                    if (!screenPoly.isEmpty()) {
+                        painter->setPen(Qt::NoPen);
+                        painter->setBrush(shadeColor);
+                        painter->drawPolygon(screenPoly);
+                    }
+                }
+            }
+        }
+    }
+
+    // Draw internal highlights
+    for (auto it = m_highlights.constBegin(); it != m_highlights.constEnd(); ++it) {
+        const QString& regionCode = it.key();
+        const HighlightStyle& highlight = it.value();
+
+        const GeoFeature* feature = m_geojson->findByCode(regionCode);
+        if (!feature) continue;
+
+        for (const QPolygonF& geoPoly : feature->polygons) {
+            QPolygonF screenPoly;
+            screenPoly.reserve(geoPoly.size());
+
+            for (const QPointF& geoPoint : geoPoly) {
+                // GeoJSON stores as (longitude, latitude)
+                QPointF screenPoint = m_camera->geoToScreen(geoPoint.y(), geoPoint.x(), viewW, viewH);
+                screenPoly.append(screenPoint);
+            }
+
+            if (!screenPoly.isEmpty()) {
+                // Draw fill
+                if (highlight.fillColor.alpha() > 0) {
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(highlight.fillColor);
+                    painter->drawPolygon(screenPoly);
+                }
+
+                // Draw border
+                if (highlight.borderColor.alpha() > 0) {
+                    painter->setPen(QPen(highlight.borderColor, 2.0));
+                    painter->setBrush(Qt::NoBrush);
+                    painter->drawPolygon(screenPoly);
+                }
+            }
+        }
+    }
+
+    // Draw region highlights from overlay manager (with their specific colors)
+    for (auto* regionHighlight : regionOverlays) {
+        const GeoFeature* feature = m_geojson->findByCode(regionHighlight->regionCode());
+        if (!feature) continue;
+
+        for (const QPolygonF& geoPoly : feature->polygons) {
+            QPolygonF screenPoly;
+            screenPoly.reserve(geoPoly.size());
+
+            for (const QPointF& geoPoint : geoPoly) {
+                // GeoJSON stores as (longitude, latitude)
+                QPointF screenPoint = m_camera->geoToScreen(geoPoint.y(), geoPoint.x(), viewW, viewH);
+                screenPoly.append(screenPoint);
+            }
+
+            if (!screenPoly.isEmpty()) {
+                // Draw fill
+                if (regionHighlight->fillColor().alpha() > 0) {
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(regionHighlight->fillColor());
+                    painter->drawPolygon(screenPoly);
+                }
+
+                // Draw border
+                if (regionHighlight->borderColor().alpha() > 0) {
+                    painter->setPen(QPen(regionHighlight->borderColor(), regionHighlight->borderWidth()));
+                    painter->setBrush(Qt::NoBrush);
+                    painter->drawPolygon(screenPoly);
+                }
+            }
+        }
+    }
+}
+
+void MapRenderer::renderRegionTracks(QPainter* painter, double currentTime, double totalDuration) {
+    if (!m_camera || !m_geojson || !m_geojson->isLoaded() || !m_regionTracks) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    // Get all visible tracks at current time with their calculated opacities
+    auto visibleTracks = m_regionTracks->visibleTracksAtTime(currentTime, totalDuration);
+
+    for (const auto& trackPair : visibleTracks) {
+        const RegionTrack* track = trackPair.first;
+        double opacity = trackPair.second;
+
+        if (opacity <= 0.0) continue;
+
+        // Find the geographic feature for this region
+        const GeoFeature* feature = m_geojson->findByCode(track->regionCode);
+        if (!feature) {
+            // Try finding by name if code didn't match
+            feature = m_geojson->findByName(track->regionName);
+        }
+        if (!feature) continue;
+
+        // Apply opacity to colors
+        QColor fillColor = track->fillColor;
+        fillColor.setAlphaF(fillColor.alphaF() * opacity);
+
+        QColor borderColor = track->borderColor;
+        borderColor.setAlphaF(borderColor.alphaF() * opacity);
+
+        // Draw the region polygons
+        for (const QPolygonF& geoPoly : feature->polygons) {
+            QPolygonF screenPoly;
+            screenPoly.reserve(geoPoly.size());
+
+            for (const QPointF& geoPoint : geoPoly) {
+                // Polygons store (lat=x, lon=y) after parsing
+                QPointF screenPoint = m_camera->geoToScreen(geoPoint.x(), geoPoint.y(), viewW, viewH);
+                screenPoly.append(screenPoint);
+            }
+
+            if (!screenPoly.isEmpty()) {
+                // Draw fill
+                if (fillColor.alpha() > 0) {
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(fillColor);
+                    painter->drawPolygon(screenPoly);
+                }
+
+                // Draw border
+                if (borderColor.alpha() > 0 && track->borderWidth > 0) {
+                    painter->setPen(QPen(borderColor, track->borderWidth));
+                    painter->setBrush(Qt::NoBrush);
+                    painter->drawPolygon(screenPoly);
+                }
+            }
+        }
+    }
+}
+
+void MapRenderer::renderOverlays(QPainter* painter, double currentTime) {
+    if (!m_camera || !m_overlays) return;
+
+    // Get overlays visible at current time
+    auto visibleOverlays = m_overlays->visibleOverlaysAtTime(currentTime);
+
+    for (auto* overlay : visibleOverlays) {
+        // Render based on overlay type
+        // TODO: Implement overlay rendering (markers, arrows, text)
+    }
+}
+
+void MapRenderer::renderLabels(QPainter* painter) {
+    if (!m_camera || !m_geojson || !m_geojson->isLoaded()) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    double zoom = m_camera->zoom();
+
+    // Apply label opacity (fades when camera moves fast)
+    if (m_labelOpacity <= 0.01) return;
+
+    painter->setOpacity(m_labelOpacity);
+
+    // Country labels (visible at zoom 2-8)
+    if (m_showCountryLabels && zoom >= 2.0 && zoom <= 10.0) {
+        // Font size scales with zoom
+        int fontSize = static_cast<int>(10 + (zoom - 2) * 1.5);
+        QFont countryFont("Arial", fontSize, QFont::Bold);
+        painter->setFont(countryFont);
+
+        for (const auto& feature : m_geojson->features()) {
+            if (feature.type == "country" && !feature.name.isEmpty() && !feature.centroid.isNull()) {
+                // Use centroid for label position
+                QPointF screenPos = m_camera->geoToScreen(
+                    feature.centroid.x(), feature.centroid.y(), viewW, viewH);
+
+                // Only draw if on screen
+                if (screenPos.x() >= -100 && screenPos.x() <= viewW + 100 &&
+                    screenPos.y() >= -50 && screenPos.y() <= viewH + 50) {
+
+                    // Draw text with outline for visibility
+                    QString name = feature.name;
+                    QFontMetrics fm(countryFont);
+                    QRect textRect = fm.boundingRect(name);
+                    textRect.moveCenter(screenPos.toPoint());
+
+                    // Draw outline
+                    painter->setPen(QPen(QColor(0, 0, 0, 180), 3));
+                    for (int dx = -1; dx <= 1; dx++) {
+                        for (int dy = -1; dy <= 1; dy++) {
+                            if (dx != 0 || dy != 0) {
+                                painter->drawText(textRect.translated(dx, dy), Qt::AlignCenter, name);
+                            }
+                        }
+                    }
+
+                    // Draw text
+                    painter->setPen(Qt::white);
+                    painter->drawText(textRect, Qt::AlignCenter, name);
+                }
+            }
+        }
+    }
+
+    // Region labels (visible at zoom 5-12)
+    if (m_showRegionLabels && zoom >= 5.0 && zoom <= 12.0) {
+        int fontSize = static_cast<int>(8 + (zoom - 5) * 1.0);
+        QFont regionFont("Arial", fontSize);
+        painter->setFont(regionFont);
+
+        for (const auto& feature : m_geojson->features()) {
+            if (feature.type == "region" && !feature.name.isEmpty()) {
+                QPointF screenPos = m_camera->geoToScreen(
+                    feature.centroid.x(), feature.centroid.y(), viewW, viewH);
+
+                if (screenPos.x() >= -50 && screenPos.x() <= viewW + 50 &&
+                    screenPos.y() >= -30 && screenPos.y() <= viewH + 30) {
+
+                    QString name = feature.name;
+                    QFontMetrics fm(regionFont);
+                    QRect textRect = fm.boundingRect(name);
+                    textRect.moveCenter(screenPos.toPoint());
+
+                    // Outline
+                    painter->setPen(QPen(QColor(0, 0, 0, 150), 2));
+                    painter->drawText(textRect.translated(1, 1), Qt::AlignCenter, name);
+
+                    // Text
+                    painter->setPen(QColor(220, 220, 220));
+                    painter->drawText(textRect, Qt::AlignCenter, name);
+                }
+            }
+        }
+    }
+
+    // City labels (visible at zoom 6+)
+    if (m_showCityLabels && zoom >= 6.0) {
+        // Larger cities at lower zoom, smaller cities at higher zoom
+        int minPopulation = 0;
+        if (zoom < 8) minPopulation = 1000000;       // Mega cities only
+        else if (zoom < 10) minPopulation = 500000;  // Large cities
+        else if (zoom < 12) minPopulation = 100000;  // Medium cities
+        else minPopulation = 50000;                   // Small cities
+
+        int fontSize = static_cast<int>(8 + (zoom - 6) * 0.8);
+        QFont cityFont("Arial", fontSize);
+        painter->setFont(cityFont);
+
+        for (const auto& feature : m_geojson->features()) {
+            if (feature.type == "city" && !feature.name.isEmpty()) {
+                // Check population if available
+                int population = feature.properties.value("population", 0).toInt();
+                if (population < minPopulation && minPopulation > 0) continue;
+
+                QPointF screenPos = m_camera->geoToScreen(
+                    feature.centroid.x(), feature.centroid.y(), viewW, viewH);
+
+                if (screenPos.x() >= -30 && screenPos.x() <= viewW + 30 &&
+                    screenPos.y() >= -20 && screenPos.y() <= viewH + 20) {
+
+                    QString name = feature.name;
+                    QFontMetrics fm(cityFont);
+                    QRect textRect = fm.boundingRect(name);
+                    textRect.moveCenter(screenPos.toPoint());
+                    textRect.translate(0, -10);  // Offset above the dot
+
+                    // Draw city dot
+                    painter->setPen(Qt::NoPen);
+                    painter->setBrush(Qt::white);
+                    painter->drawEllipse(screenPos, 3, 3);
+
+                    // Outline
+                    painter->setPen(QPen(QColor(0, 0, 0, 150), 2));
+                    painter->drawText(textRect.translated(1, 1), Qt::AlignCenter, name);
+
+                    // Text
+                    painter->setPen(QColor(255, 255, 200));
+                    painter->drawText(textRect, Qt::AlignCenter, name);
+                }
+            }
+        }
+    }
+
+    painter->setOpacity(1.0);
+}
+
+void MapRenderer::setTileProvider(TileProvider* provider) {
+    if (m_tileProvider) {
+        disconnect(m_tileProvider, nullptr, this, nullptr);
+    }
+    m_tileProvider = provider;
+    if (m_tileProvider) {
+        connect(m_tileProvider, &TileProvider::tileReady, this, &MapRenderer::onTileReady);
+        connect(m_tileProvider, &TileProvider::currentSourceChanged, this, &MapRenderer::requestUpdate);
+    }
+}
+
+void MapRenderer::setTileCache(TileCache* cache) {
+    m_tileCache = cache;
+}
+
+void MapRenderer::setGeoJson(GeoJsonParser* geojson) {
+    m_geojson = geojson;
+}
+
+void MapRenderer::setOverlayManager(OverlayManager* overlays) {
+    m_overlays = overlays;
+}
+
+void MapRenderer::setRegionTrackModel(RegionTrackModel* regionTracks) {
+    m_regionTracks = regionTracks;
+    if (m_regionTracks) {
+        connect(m_regionTracks, &RegionTrackModel::dataModified, this, &MapRenderer::requestUpdate);
+    }
+}
+
+void MapRenderer::setCamera(MapCamera* camera) {
+    if (m_camera) {
+        disconnect(m_camera, nullptr, this, nullptr);
+    }
+    m_camera = camera;
+    if (m_camera) {
+        connect(m_camera, &MapCamera::cameraChanged, this, &MapRenderer::requestUpdate);
+        connect(m_camera, &MapCamera::movementSpeedChanged, this, &MapRenderer::onMovementSpeedChanged);
+    }
+    emit cameraChanged();
+    update();
+}
+
+void MapRenderer::onMovementSpeedChanged() {
+    if (!m_camera) return;
+
+    double speed = m_camera->movementSpeed();
+    double newOpacity;
+
+    if (speed <= SPEED_FADE_START) {
+        newOpacity = 1.0;
+    } else if (speed >= SPEED_FADE_END) {
+        newOpacity = 0.0;
+    } else {
+        // Linear interpolation between start and end thresholds
+        newOpacity = 1.0 - (speed - SPEED_FADE_START) / (SPEED_FADE_END - SPEED_FADE_START);
+    }
+
+    if (!qFuzzyCompare(m_labelOpacity, newOpacity)) {
+        m_labelOpacity = newOpacity;
+        emit labelOpacityChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShowCountryLabels(bool show) {
+    if (m_showCountryLabels != show) {
+        m_showCountryLabels = show;
+        emit showCountryLabelsChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShowRegionLabels(bool show) {
+    if (m_showRegionLabels != show) {
+        m_showRegionLabels = show;
+        emit showRegionLabelsChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShowCityLabels(bool show) {
+    if (m_showCityLabels != show) {
+        m_showCityLabels = show;
+        emit showCityLabelsChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShadeNonHighlighted(bool shade) {
+    if (m_shadeNonHighlighted != shade) {
+        m_shadeNonHighlighted = shade;
+        emit shadeNonHighlightedChanged();
+        update();
+    }
+}
+
+void MapRenderer::setNonHighlightedOpacity(double opacity) {
+    if (!qFuzzyCompare(m_nonHighlightedOpacity, opacity)) {
+        m_nonHighlightedOpacity = opacity;
+        emit nonHighlightedOpacityChanged();
+        update();
+    }
+}
+
+void MapRenderer::highlightRegion(const QString& regionCode, const QColor& fillColor, const QColor& borderColor) {
+    m_highlights[regionCode] = {fillColor, borderColor};
+    update();
+}
+
+void MapRenderer::clearHighlight(const QString& regionCode) {
+    m_highlights.remove(regionCode);
+    update();
+}
+
+void MapRenderer::clearAllHighlights() {
+    m_highlights.clear();
+    update();
+}
+
+void MapRenderer::onTileReady(int x, int y, int zoom, const QImage& image) {
+    // Store in cache
+    if (m_tileCache && m_tileProvider) {
+        m_tileCache->insert(m_tileProvider->currentSource(), x, y, zoom, image);
+    }
+    update();
+}
+
+void MapRenderer::requestUpdate() {
+    update();
+}
+
+QImage MapRenderer::renderToImage(int targetWidth, int targetHeight) {
+    QImage image(targetWidth, targetHeight, QImage::Format_ARGB32);
+    image.fill(Qt::black);
+
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    // Temporarily disable frame buffer to avoid recursion
+    bool wasUsingFrameBuffer = m_useFrameBuffer;
+    m_useFrameBuffer = false;
+
+    // Temporarily adjust for target size
+    double scaleX = static_cast<double>(targetWidth) / width();
+    double scaleY = static_cast<double>(targetHeight) / height();
+    painter.scale(scaleX, scaleY);
+
+    // Render all layers directly (not using paint() to avoid signals)
+    painter.save();
+    applyTransforms(&painter);
+    renderTiles(&painter);
+    renderCountryBorders(&painter);
+    renderHighlights(&painter);
+    renderCityMarkers(&painter);
+    renderOverlays(&painter, m_currentAnimationTime);
+    renderLabels(&painter);
+    resetTransforms(&painter);
+    painter.restore();
+
+    // Restore frame buffer setting
+    m_useFrameBuffer = wasUsingFrameBuffer;
+
+    return image;
+}
+
+void MapRenderer::setCurrentAnimationTime(double timeMs) {
+    if (!qFuzzyCompare(m_currentAnimationTime, timeMs)) {
+        m_currentAnimationTime = timeMs;
+        emit currentAnimationTimeChanged();
+        update();
+    }
+}
+
+void MapRenderer::setTotalDuration(double durationMs) {
+    if (!qFuzzyCompare(m_totalDuration, durationMs)) {
+        m_totalDuration = durationMs;
+        emit totalDurationChanged();
+    }
+}
+
+void MapRenderer::setFrameBuffer(FrameBuffer* buffer) {
+    if (m_frameBuffer != buffer) {
+        m_frameBuffer = buffer;
+        update();
+    }
+}
+
+void MapRenderer::setUseFrameBuffer(bool use) {
+    if (m_useFrameBuffer != use) {
+        m_useFrameBuffer = use;
+        emit useFrameBufferChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShowCountryBorders(bool show) {
+    if (m_showCountryBorders != show) {
+        m_showCountryBorders = show;
+        emit showCountryBordersChanged();
+        update();
+    }
+}
+
+void MapRenderer::setShowCityMarkers(bool show) {
+    if (m_showCityMarkers != show) {
+        m_showCityMarkers = show;
+        emit showCityMarkersChanged();
+        update();
+    }
+}
+
+void MapRenderer::renderCountryBorders(QPainter* painter) {
+    if (!m_showCountryBorders || !m_camera || !m_geojson || !m_geojson->isLoaded()) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    // Border colors
+    QColor borderColor(255, 255, 255, 120);  // White semi-transparent
+    QColor selectedBorderColor(255, 220, 0, 255);  // Yellow for selected
+
+    painter->setBrush(Qt::NoBrush);
+
+    for (const auto& feature : m_geojson->features()) {
+        if (feature.type != "country") continue;
+
+        bool isSelected = (m_selectedFeatureType == "country" && feature.code == m_selectedFeatureCode);
+
+        if (isSelected) {
+            painter->setPen(QPen(selectedBorderColor, 3.0));
+        } else {
+            painter->setPen(QPen(borderColor, 1.0));
+        }
+
+        for (const QPolygonF& geoPoly : feature.polygons) {
+            QPolygonF screenPoly;
+            screenPoly.reserve(geoPoly.size());
+
+            for (const QPointF& geoPoint : geoPoly) {
+                QPointF screenPoint = m_camera->geoToScreen(geoPoint.x(), geoPoint.y(), viewW, viewH);
+                screenPoly.append(screenPoint);
+            }
+
+            if (!screenPoly.isEmpty()) {
+                painter->drawPolygon(screenPoly);
+            }
+        }
+    }
+}
+
+void MapRenderer::renderCityMarkers(QPainter* painter) {
+    if (!m_showCityMarkers || !m_camera || !m_geojson || !m_geojson->isLoaded()) return;
+
+    double viewW = width();
+    double viewH = height();
+    if (viewW <= 0 || viewH <= 0) return;
+
+    double zoom = m_camera->zoom();
+
+    // Filter cities by zoom level
+    int minPopulation = 0;
+    if (zoom < 5) minPopulation = 5000000;
+    else if (zoom < 7) minPopulation = 1000000;
+    else if (zoom < 9) minPopulation = 500000;
+    else if (zoom < 11) minPopulation = 100000;
+    else minPopulation = 50000;
+
+    QColor markerColor(255, 100, 100, 200);
+    QColor selectedMarkerColor(255, 220, 0, 255);
+    QColor textColor(255, 255, 255, 220);
+
+    QFont cityFont("Arial", 10);
+    painter->setFont(cityFont);
+
+    for (const auto& feature : m_geojson->features()) {
+        if (feature.type != "city") continue;
+
+        int population = feature.properties.value("population", 0).toInt();
+        if (population < minPopulation) continue;
+
+        QPointF screenPos = m_camera->geoToScreen(feature.centroid.x(), feature.centroid.y(), viewW, viewH);
+
+        // Skip if off screen
+        if (screenPos.x() < -20 || screenPos.x() > viewW + 20 ||
+            screenPos.y() < -20 || screenPos.y() > viewH + 20) continue;
+
+        bool isSelected = (m_selectedFeatureType == "city" && feature.name == m_selectedFeatureName);
+
+        // Draw marker circle
+        double markerSize = isSelected ? 8 : 5;
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(isSelected ? selectedMarkerColor : markerColor);
+        painter->drawEllipse(screenPos, markerSize, markerSize);
+
+        // Draw city name
+        if (zoom >= 6) {
+            QString name = feature.name;
+            QFontMetrics fm(cityFont);
+            QRect textRect = fm.boundingRect(name);
+            textRect.moveCenter(QPoint(static_cast<int>(screenPos.x()), static_cast<int>(screenPos.y()) - 15));
+
+            // Text outline
+            painter->setPen(QPen(QColor(0, 0, 0, 180), 2));
+            painter->drawText(textRect.translated(1, 1), Qt::AlignCenter, name);
+
+            // Text
+            painter->setPen(isSelected ? selectedMarkerColor : textColor);
+            painter->drawText(textRect, Qt::AlignCenter, name);
+        }
+    }
+}
+
+QString MapRenderer::hitTestCountry(double screenX, double screenY) {
+    if (!m_camera || !m_geojson || !m_geojson->isLoaded()) return QString();
+
+    QPointF geo = m_camera->screenToGeo(screenX, screenY, width(), height());
+    double lat = geo.x();
+    double lon = geo.y();
+
+    for (const auto& feature : m_geojson->features()) {
+        if (feature.type != "country") continue;
+
+        for (const QPolygonF& poly : feature.polygons) {
+            if (pointInPolygon(poly, lat, lon)) {
+                return feature.code;
+            }
+        }
+    }
+
+    return QString();
+}
+
+QString MapRenderer::hitTestCity(double screenX, double screenY) {
+    if (!m_camera || !m_geojson || !m_geojson->isLoaded()) return QString();
+
+    double viewW = width();
+    double viewH = height();
+    double hitRadius = 15.0;  // pixels
+
+    for (const auto& feature : m_geojson->features()) {
+        if (feature.type != "city") continue;
+
+        QPointF screenPos = m_camera->geoToScreen(feature.centroid.x(), feature.centroid.y(), viewW, viewH);
+
+        double dx = screenPos.x() - screenX;
+        double dy = screenPos.y() - screenY;
+        double dist = std::sqrt(dx * dx + dy * dy);
+
+        if (dist <= hitRadius) {
+            return feature.name;
+        }
+    }
+
+    return QString();
+}
+
+bool MapRenderer::pointInPolygon(const QPolygonF& polygon, double lat, double lon) const {
+    QPointF testPoint(lat, lon);
+    return polygon.containsPoint(testPoint, Qt::OddEvenFill);
+}
+
+void MapRenderer::selectFeatureAt(double screenX, double screenY) {
+    // First check cities (smaller hit targets, higher priority)
+    QString cityName = hitTestCity(screenX, screenY);
+    if (!cityName.isEmpty()) {
+        // Find the city feature
+        for (const auto& feature : m_geojson->features()) {
+            if (feature.type == "city" && feature.name == cityName) {
+                m_selectedFeatureCode = feature.code;
+                m_selectedFeatureName = feature.name;
+                m_selectedFeatureType = "city";
+                emit selectedFeatureChanged();
+                emit featureClicked(feature.code, feature.name, "city");
+                update();
+                return;
+            }
+        }
+    }
+
+    // Then check countries
+    QString countryCode = hitTestCountry(screenX, screenY);
+    if (!countryCode.isEmpty()) {
+        const GeoFeature* feature = m_geojson->findByCode(countryCode);
+        if (feature) {
+            m_selectedFeatureCode = countryCode;
+            m_selectedFeatureName = feature->name;
+            m_selectedFeatureType = "country";
+            emit selectedFeatureChanged();
+            emit featureClicked(countryCode, feature->name, "country");
+            update();
+            return;
+        }
+    }
+
+    // Nothing hit - clear selection
+    clearSelection();
+}
+
+void MapRenderer::clearSelection() {
+    if (!m_selectedFeatureCode.isEmpty() || !m_selectedFeatureName.isEmpty()) {
+        m_selectedFeatureCode.clear();
+        m_selectedFeatureName.clear();
+        m_selectedFeatureType.clear();
+        emit selectedFeatureChanged();
+        update();
+    }
+}
+
+void MapRenderer::toggleFeatureHighlight(const QString& code, const QColor& fillColor, const QColor& borderColor) {
+    if (m_highlights.contains(code)) {
+        clearHighlight(code);
+    } else {
+        highlightRegion(code, fillColor, borderColor);
+    }
+}
