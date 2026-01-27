@@ -10,11 +10,11 @@ Item {
         id: mapRenderer
         anchors.fill: parent
 
-        showCountryLabels: Settings.showCountryLabels
-        showRegionLabels: Settings.showRegionLabels
-        showCityLabels: Settings.showCityLabels
-        showCountryBorders: true
-        showCityMarkers: true
+        showCountryLabels: false
+        showRegionLabels: false
+        showCityLabels: false
+        showCountryBorders: false
+        showCityMarkers: false
         shadeNonHighlighted: Settings.shadeNonHighlighted
         nonHighlightedOpacity: Settings.nonHighlightedOpacity
 
@@ -146,10 +146,10 @@ Item {
 
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 10
+                spacing: 8
 
                 Rectangle {
-                    width: 80
+                    width: 70
                     height: 24
                     color: highlightBtn.containsMouse ? "#444444" : "#333333"
                     radius: 4
@@ -166,17 +166,49 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
-                            mapRenderer.toggleFeatureHighlight(
-                                mapRenderer.selectedFeatureCode,
-                                Qt.rgba(1, 0.8, 0, 0.3),
-                                Qt.rgba(1, 0.8, 0, 1)
-                            )
+                            let startTime = AnimController ? AnimController.currentTime : 0
+                            if (mapRenderer.selectedFeatureType === "country") {
+                                GeoOverlays.addCountry(mapRenderer.selectedFeatureCode, mapRenderer.selectedFeatureName, startTime)
+                            } else if (mapRenderer.selectedFeatureType === "region") {
+                                GeoOverlays.addRegion(mapRenderer.selectedFeatureCode, mapRenderer.selectedFeatureName, "", startTime)
+                            } else if (mapRenderer.selectedFeatureType === "city") {
+                                // For cities we need lat/lon - get from GeoJson
+                                let city = GeoJson.cityByName(mapRenderer.selectedFeatureName)
+                                if (city) {
+                                    GeoOverlays.addCity(city.name, city.countryName, city.lat, city.lon, startTime)
+                                }
+                            }
+                            mapRenderer.clearSelection()
                         }
                     }
                 }
 
                 Rectangle {
-                    width: 60
+                    width: 55
+                    height: 24
+                    color: frameBtn.containsMouse ? "#444444" : "#333333"
+                    radius: 4
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Frame"
+                        color: "#66ccff"
+                        font.pixelSize: 11
+                    }
+
+                    MouseArea {
+                        id: frameBtn
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            // Frame the selected feature (zoom to fit)
+                            mapRenderer.frameSelectedFeature()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    width: 50
                     height: 24
                     color: clearBtn.containsMouse ? "#444444" : "#333333"
                     radius: 4

@@ -1,6 +1,6 @@
 # Tristans Kort Animator
 
-A Qt 6 desktop application for creating animated map videos with keyframe-based camera movements, region highlighting, and overlay support.
+A Qt 6 desktop application for creating animated map videos with keyframe-based camera movements, geographic overlays, and timeline-based animation control.
 
 ## Features
 
@@ -19,26 +19,28 @@ A Qt 6 desktop application for creating animated map videos with keyframe-based 
   - Glide - Smooth continuous pan
 - **Easing Functions**: Linear, ease-in, ease-out, ease-in-out, cubic, elastic, bounce
 
-### Region Highlighting
-- **Country/State Data**: Natural Earth 50m resolution GeoJSON for countries and states/provinces
-- **Region Tracks**: Timeline-based region highlighting with:
-  - Customizable fill and border colors
-  - Fade in/out timing
-  - Drag-to-reposition on timeline
-- **City Database**: Built-in major world cities
+### Geographic Overlays
+- **Country Highlighting**: Add countries with white border outlines on the map
+- **Region/State Highlighting**: Add states and provinces with customizable borders
+- **City Markers**: Place city markers with labels
+- **Border-Only Style**: Clean white border highlighting without fill for professional appearance
+- **Timeline Integration**: All overlays appear on timeline tracks with:
+  - Adjustable start and end times
+  - Drag-to-reposition timing
+  - Visual track bars showing duration
 
-### Overlays
-- **Markers**: Custom pins with labels
-- **Arrows**: Bezier curve arrows for showing movement/routes
-- **Text Labels**: Positioned text overlays
-- **Region Highlights**: Country/state fill with custom colors
+### GeoJSON Data
+- **Natural Earth 50m Countries**: High-quality country boundary data
+- **Natural Earth 50m States/Provinces**: Regional boundaries for detailed maps
+- **Natural Earth 10m Cities**: Major world cities database
 
 ### Timeline
-- **Visual Timeline**: Horizontal timeline with time ruler
-- **Keyframe Markers**: Draggable keyframe indicators
-- **Region Tracks**: Additional timeline rows for region highlight timing
+- **Visual Timeline**: Horizontal timeline with time ruler and zoom control
+- **Camera Track**: Keyframe markers for camera positions
+- **Overlay Tracks**: Separate tracks for each geographic overlay
+- **Integrated Labels**: Clean track labels matching the camera track style
+- **Mouse Interaction**: Drag track bars to reposition, resize from edges, click to select
 - **Zoom Control**: Mouse wheel zoom with shift+wheel for scrolling
-- **Multi-Selection**: Shift+drag for rubber band selection, Ctrl+click to toggle
 
 ### Video Export
 - **FFmpeg Integration**: Pipe frames directly to FFmpeg for encoding
@@ -48,7 +50,7 @@ A Qt 6 desktop application for creating animated map videos with keyframe-based 
 
 ## Requirements
 
-- **Qt 6.5+** with modules: Core, Gui, Quick, QuickControls2, Network, Widgets
+- **Qt 6.5+** with modules: Core, Gui, Quick, QuickControls2, Network, Widgets, Quick3D
 - **CMake 3.21+**
 - **C++17 compatible compiler** (MSVC 2022, GCC 11+, Clang 13+)
 - **FFmpeg** (for video export, must be in PATH)
@@ -68,7 +70,7 @@ cmake --build build --config Release
 
 ### Windows with Qt Creator
 1. Open `CMakeLists.txt` in Qt Creator
-2. Select your Qt 6 kit
+2. Select your Qt 6 kit (with Quick3D module)
 3. Build and run
 
 ## Usage
@@ -80,12 +82,13 @@ cmake --build build --config Release
 3. **Adjust Timing**: Drag keyframes on the timeline to adjust timing
 4. **Set Interpolation**: Select keyframe and choose interpolation mode in the property panel
 
-### Adding Region Highlights
+### Adding Geographic Overlays
 
-1. Click "+ Region" button
-2. Select a country/state from the picker
-3. Adjust start time, duration, and fade timing on the region track
-4. Right-click track label to edit colors
+1. **Countries**: Click "Country" button, search and select from the list
+2. **Regions**: Click "Region" button, select country first, then choose region/state
+3. **Cities**: Click "City" button, search and select a city
+4. **Adjust Timing**: Drag overlay track bars on the timeline to set when overlays appear
+5. **Customize**: Overlays appear with white border outlines by default
 
 ### Exporting Video
 
@@ -102,17 +105,17 @@ TristansKortAnimator/
 │   ├── main.cpp
 │   ├── core/           # Settings, ProjectManager
 │   ├── map/            # MapRenderer, TileProvider, TileCache, MapCamera, GeoJsonParser
-│   ├── animation/      # Keyframe, KeyframeModel, Interpolator, AnimationController
-│   ├── overlays/       # Overlay types and OverlayManager
-│   ├── export/         # VideoExporter, FFmpegPipeline, FrameCapturer
-│   └── controllers/    # MainController
+│   ├── animation/      # Keyframe, KeyframeModel, GeoOverlayModel, AnimationController
+│   ├── overlays/       # Legacy overlay types and OverlayManager
+│   ├── export/         # VideoExporter, FFmpegPipeline
+│   ├── controllers/    # MainController
+│   └── 3d/             # GlobeGeometry, CountryGeometry, GlobeCamera (3D globe support)
 ├── qml/
 │   ├── main.qml
 │   ├── Theme.qml
-│   ├── components/     # MapView, Timeline, PropertyPanel, etc.
-│   └── pages/          # SettingsPage
+│   └── components/     # MapView, Timeline, OverlayPanel, PropertyPanel, etc.
 └── resources/
-    ├── geojson/        # Country and state boundary data
+    ├── geojson/        # Natural Earth country, state, and city data
     └── icons/          # SVG icons
 ```
 
@@ -123,4 +126,4 @@ This project is provided as-is for educational and personal use.
 ## Acknowledgments
 
 - Map tiles from OpenStreetMap contributors, CartoDB, Stamen Design
-- Country/state boundaries from Natural Earth (public domain)
+- Country/state/city boundaries from Natural Earth (public domain)

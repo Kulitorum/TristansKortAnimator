@@ -29,12 +29,35 @@ void AnimationController::setCamera(MapCamera* camera) {
 }
 
 double AnimationController::totalDuration() const {
-    return m_keyframes ? m_keyframes->totalDuration() : 0.0;
+    if (m_useExplicitDuration) {
+        return m_explicitDuration;
+    }
+    // Fall back to keyframe-based duration, but ensure minimum 60 seconds
+    double kfDuration = m_keyframes ? m_keyframes->totalDuration() : 0.0;
+    return qMax(kfDuration, 60000.0);
+}
+
+void AnimationController::setExplicitDuration(double durationMs) {
+    durationMs = qMax(1000.0, durationMs);  // Minimum 1 second
+    if (!qFuzzyCompare(m_explicitDuration, durationMs)) {
+        m_explicitDuration = durationMs;
+        emit explicitDurationChanged();
+        emit totalDurationChanged();
+    }
+}
+
+void AnimationController::setUseExplicitDuration(bool use) {
+    if (m_useExplicitDuration != use) {
+        m_useExplicitDuration = use;
+        emit useExplicitDurationChanged();
+        emit totalDurationChanged();
+    }
 }
 
 void AnimationController::play() {
     if (m_playing) return;
-    if (!m_keyframes || m_keyframes->count() < 2) return;
+    // Allow playback even without keyframes (for CRC-only animations)
+    // Duration comes from explicit duration or keyframes
 
     m_playing = true;
     m_elapsed.start();
@@ -80,7 +103,7 @@ void AnimationController::setCurrentTime(double timeMs) {
     // Only clamp to >= 0, allow seeking beyond last keyframe to add new ones
     timeMs = qMax(0.0, timeMs);
 
-    if (!qFuzzyCompare(m_currentTimeMs, timeMs)) {
+    if (!qFuzzyCompare(m_currentTimeMs + 1.0, timeMs + 1.0)) {  // Add 1.0 to handle near-zero values
         m_currentTimeMs = timeMs;
         updateCameraFromTime(timeMs);
         emit currentTimeChanged();
@@ -136,7 +159,7 @@ void AnimationController::stepBackward() {
 }
 
 void AnimationController::tick() {
-    if (!m_playing || !m_keyframes || m_keyframes->count() < 2) {
+    if (!m_playing) {
         return;
     }
 
@@ -148,7 +171,7 @@ void AnimationController::tick() {
     double newTime = m_currentTimeMs + deltaMs * m_playbackSpeed;
     double duration = totalDuration();
 
-    if (newTime >= duration) {
+    if (duration > 0 && newTime >= duration) {
         if (m_looping) {
             newTime = std::fmod(newTime, duration);
         } else {
@@ -167,10 +190,14 @@ void AnimationController::updateCameraFromTime(double timeMs) {
         return;
     }
 
+    // Set seeking flag to prevent feedback loops
+    m_seeking = true;
+
     // Handle single keyframe case
     if (m_keyframes->count() == 1) {
         const auto& kf = m_keyframes->at(0);
         m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
+        m_seeking = false;
         return;
     }
 
@@ -184,17 +211,17 @@ void AnimationController::updateCameraFromTime(double timeMs) {
             const auto& kf = m_keyframes->at(fromIndex);
             m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
         }
+        m_seeking = false;
         return;
     }
 
-    // Interpolate between keyframes
-    // The "to" keyframe defines how we GET there (interpolation/easing)
+    // Interpolate between keyframes with ease-in-out
     const Keyframe& from = m_keyframes->at(fromIndex);
     const Keyframe& to = m_keyframes->at(toIndex);
 
-    CameraState state = m_interpolator->interpolate(from, to, progress,
-                                                     to.interpolation, to.easing);
+    CameraState state = m_interpolator->interpolate(from, to, progress);
 
     m_camera->setPosition(state.latitude, state.longitude, state.zoom,
                           state.bearing, state.tilt);
+    m_seeking = false;
 }

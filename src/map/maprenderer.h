@@ -97,6 +97,7 @@ public:
     Q_INVOKABLE void selectFeatureAt(double screenX, double screenY);
     Q_INVOKABLE void clearSelection();
     Q_INVOKABLE void toggleFeatureHighlight(const QString& code, const QColor& fillColor, const QColor& borderColor);
+    Q_INVOKABLE void frameSelectedFeature();
 
     QString selectedFeatureCode() const { return m_selectedFeatureCode; }
     QString selectedFeatureName() const { return m_selectedFeatureName; }
@@ -151,17 +152,17 @@ private:
     GeoOverlayModel* m_geoOverlays = nullptr;
     FrameBuffer* m_frameBuffer = nullptr;
 
-    bool m_showCountryLabels = true;
-    bool m_showRegionLabels = true;
-    bool m_showCityLabels = true;
+    bool m_showCountryLabels = false;
+    bool m_showRegionLabels = false;
+    bool m_showCityLabels = false;
     double m_labelOpacity = 1.0;
     bool m_shadeNonHighlighted = false;
     double m_nonHighlightedOpacity = 0.3;
     double m_currentAnimationTime = 0.0;
     double m_totalDuration = 0.0;
     bool m_useFrameBuffer = true;
-    bool m_showCountryBorders = true;
-    bool m_showCityMarkers = true;
+    bool m_showCountryBorders = false;
+    bool m_showCityMarkers = false;
     QString m_selectedFeatureCode;
     QString m_selectedFeatureName;
     QString m_selectedFeatureType;

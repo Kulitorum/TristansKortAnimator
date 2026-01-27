@@ -23,6 +23,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     QuickControls2
     Network
     Widgets
+    Quick3D
 )
 
 # Silence Qt policy warnings
@@ -59,6 +60,7 @@ set(SOURCES
     src/animation/interpolator.cpp
     src/animation/animationcontroller.cpp
     src/animation/framebuffer.cpp
+    src/animation/overlaykeyframe.cpp
     src/overlays/overlay.cpp
     src/overlays/markeroverlay.cpp
     src/overlays/arrowoverlay.cpp
@@ -70,6 +72,9 @@ set(SOURCES
     src/export/videoexporter.cpp
     src/controllers/maincontroller.cpp
     src/core/projectmanager.cpp
+    src/3d/globegeometry.cpp
+    src/3d/countrygeometry.cpp
+    src/3d/globecamera.cpp
 )
 
 set(HEADERS
@@ -89,6 +94,7 @@ set(HEADERS
     src/animation/easingfunctions.h
     src/animation/animationcontroller.h
     src/animation/framebuffer.h
+    src/animation/overlaykeyframe.h
     src/overlays/overlay.h
     src/overlays/markeroverlay.h
     src/overlays/arrowoverlay.h
@@ -100,6 +106,9 @@ set(HEADERS
     src/export/videoexporter.h
     src/controllers/maincontroller.h
     src/core/projectmanager.h
+    src/3d/globegeometry.h
+    src/3d/countrygeometry.h
+    src/3d/globecamera.h
 )
 
 # Resources
@@ -120,6 +129,7 @@ target_link_libraries(TristansKortAnimator PRIVATE
     Qt6::QuickControls2
     Qt6::Network
     Qt6::Widgets
+    Qt6::Quick3D
 )
 
 # Include directories
@@ -134,8 +144,10 @@ set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Define QML files list
 set(QML_FILES
     qml/main.qml
+    qml/main_test3d.qml
     qml/Theme.qml
     qml/components/MapView.qml
+    qml/components/GlobeView.qml
     qml/components/Timeline.qml
     qml/components/KeyframeMarker.qml
     qml/components/PreviewControls.qml
@@ -148,6 +160,7 @@ set(QML_FILES
     qml/components/RegionPicker.qml
     qml/components/RegionTrackTimeline.qml
     qml/components/GeoOverlayTimeline.qml
+    qml/components/OverlayTimeline.qml
     qml/components/ColorPicker.qml
     qml/components/ExportDialog.qml
     qml/components/StyledButton.qml

@@ -34,10 +34,15 @@ MainController::MainController(QObject* parent)
 
     // ProjectManager needs keyframes and overlays for save/load
     m_projectManager = new ProjectManager(m_keyframes, m_overlays, this);
+    m_projectManager->setGeoOverlayModel(m_geoOverlays);
+    m_projectManager->setSettings(m_settings);
 
     // Setup animation controller
     m_animation->setKeyframeModel(m_keyframes);
     m_animation->setCamera(m_camera);
+
+    // Set animation controller on project manager for save/load
+    m_projectManager->setAnimationController(m_animation);
 
     // Setup exporter
     m_exporter->setAnimationController(m_animation);
@@ -95,9 +100,13 @@ void MainController::setupConnections() {
         }
     });
 
-    // Camera changes - update current keyframe when in edit mode
+    // Camera changes - update current keyframe when in edit mode, or auto-create if autoKey is ON
     connect(m_camera, &MapCamera::cameraChanged, this, [this]() {
+        // Skip if we're updating camera from animation playback or scrubbing
+        if (m_animation->isPlaying() || m_animation->isSeeking()) return;
+
         if (m_keyframes->editMode()) {
+            // Edit mode: update the current keyframe with new position
             m_keyframes->updateCurrentPosition(
                 m_camera->latitude(),
                 m_camera->longitude(),
@@ -105,8 +114,19 @@ void MainController::setupConnections() {
                 m_camera->bearing(),
                 m_camera->tilt()
             );
+        } else if (m_settings->autoKey()) {
+            // Auto-key mode: automatically create or select keyframe at current time
+            ensureKeyframeAtCurrentTime();
         }
     });
+
+    // Update GeoOverlayModel with current animation time for keyframe interpolation
+    connect(m_animation, &AnimationController::currentTimeChanged, this, [this]() {
+        m_geoOverlays->setCurrentTime(m_animation->currentTime());
+    });
+
+    // Track GeoOverlay data modifications for unsaved changes
+    connect(m_geoOverlays, &GeoOverlayModel::dataModified, m_projectManager, &ProjectManager::markModified);
 }
 
 void MainController::loadGeoJsonData() {
@@ -136,7 +156,7 @@ void MainController::loadGeoJsonData() {
 }
 
 void MainController::addKeyframeAtCurrentPosition() {
-    // Add keyframe at the current playhead (animation) time
+    // Add keyframe at the current playhead time
     double currentTime = m_animation->currentTime();
 
     m_keyframes->addKeyframeAtTime(
@@ -178,52 +198,40 @@ void MainController::setTileSource(int sourceIndex) {
 }
 
 void MainController::ensureKeyframeAtCurrentTime() {
-    // If autoKey is disabled, just enable edit mode for manual editing
-    if (!m_settings->autoKey()) {
-        m_keyframes->setEditMode(true);
-        return;
-    }
-
-    // Tolerance: 3 frames at 30fps = 100ms
-    constexpr double FRAME_TOLERANCE_MS = 100.0;
+    if (!m_keyframes || !m_camera) return;
 
     double currentTime = m_animation->currentTime();
+    double tolerance = 100.0;  // 100ms tolerance for "same" keyframe
 
-    // Snap time to frame boundary
-    double snappedTime = KeyframeModel::snapToFrame(currentTime);
-
-    // Check if there's a keyframe near the current time
-    int nearIndex = m_keyframes->keyframeNearTime(snappedTime, FRAME_TOLERANCE_MS);
+    // Check if there's already a keyframe near the current time
+    int nearIndex = m_keyframes->keyframeNearTime(currentTime, tolerance);
 
     if (nearIndex >= 0) {
-        // Found a keyframe nearby - select it and enable edit mode
+        // Update existing keyframe at this time
+        m_keyframes->updateKeyframe(nearIndex, {
+            {"latitude", m_camera->latitude()},
+            {"longitude", m_camera->longitude()},
+            {"zoom", m_camera->zoom()},
+            {"bearing", m_camera->bearing()},
+            {"tilt", m_camera->tilt()}
+        });
         m_keyframes->setCurrentIndex(nearIndex);
-        m_keyframes->setEditMode(true);
     } else {
-        // No keyframe nearby - add one at the snapped time
+        // Create new keyframe at current time
         m_keyframes->addKeyframeAtTime(
             m_camera->latitude(),
             m_camera->longitude(),
             m_camera->zoom(),
             m_camera->bearing(),
             m_camera->tilt(),
-            snappedTime
+            currentTime
         );
 
-        // Find and select the newly added keyframe
-        int newIndex = m_keyframes->keyframeNearTime(snappedTime, 1.0);  // Small tolerance
-        if (newIndex < 0) {
-            newIndex = m_keyframes->count() - 1;
+        // Select the newly created keyframe
+        int newIndex = m_keyframes->keyframeIndexAtTime(currentTime);
+        if (newIndex >= 0) {
+            m_keyframes->setCurrentIndex(newIndex);
         }
-        m_keyframes->setCurrentIndex(newIndex);
-        m_keyframes->setEditMode(true);
-
-        // Precache tiles for the new position
-        precacheTilesForPosition(
-            m_camera->latitude(),
-            m_camera->longitude(),
-            m_camera->zoom()
-        );
     }
 }
 
@@ -247,14 +255,14 @@ void MainController::setMapRenderer(MapRenderer* renderer) {
             }
         });
 
-        // Update total duration in renderer
-        connect(m_keyframes, &KeyframeModel::totalDurationChanged, this, [this]() {
+        // Update total duration in renderer (use AnimationController's duration which supports explicit mode)
+        connect(m_animation, &AnimationController::totalDurationChanged, this, [this]() {
             if (m_renderer) {
-                m_renderer->setTotalDuration(m_keyframes->totalDuration());
+                m_renderer->setTotalDuration(m_animation->totalDuration());
             }
         });
         // Set initial duration
-        m_renderer->setTotalDuration(m_keyframes->totalDuration());
+        m_renderer->setTotalDuration(m_animation->totalDuration());
 
         m_frameBuffer->setResolution(static_cast<int>(m_renderer->width()),
                                      static_cast<int>(m_renderer->height()));

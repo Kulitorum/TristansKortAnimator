@@ -13,14 +13,15 @@ Item {
     property int trackHeight: 30
     property int headerWidth: 150
 
-    implicitHeight: Math.max(80, GeoOverlays.count * trackHeight + 50)
+    // Always show at least the header, expand for tracks
+    implicitHeight: Math.max(60, GeoOverlays.count * trackHeight + 50)
 
     Rectangle {
         anchors.fill: parent
         color: Theme.timelineBackground
     }
 
-    // Header column (overlay names and add buttons)
+    // Header column (overlay names)
     Rectangle {
         id: headerColumn
         width: headerWidth
@@ -35,38 +36,18 @@ Item {
             color: Theme.borderColor
         }
 
-        // Add buttons row
-        Row {
+        // Header label
+        Text {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.margins: 4
+            anchors.margins: 8
             height: 28
-            spacing: 4
-
-            Button {
-                width: (parent.width - 8) / 3
-                height: 24
-                text: "Country"
-                font.pixelSize: 9
-                onClicked: countryPicker.open()
-            }
-
-            Button {
-                width: (parent.width - 8) / 3
-                height: 24
-                text: "Region"
-                font.pixelSize: 9
-                onClicked: regionPicker.open()
-            }
-
-            Button {
-                width: (parent.width - 8) / 3
-                height: 24
-                text: "City"
-                font.pixelSize: 9
-                onClicked: cityPicker.open()
-            }
+            text: qsTr("Geo Overlays")
+            color: Theme.textColorDim
+            font.pixelSize: 11
+            font.bold: true
+            verticalAlignment: Text.AlignVCenter
         }
 
         // Overlay labels
@@ -201,6 +182,8 @@ Item {
                     width: trackFlickable.contentWidth
                     height: trackHeight
 
+                    property int overlayIndex: index
+
                     // Track duration bar
                     Rectangle {
                         id: trackBar
@@ -241,7 +224,55 @@ Item {
                             }
                         }
 
-                        // Drag to move
+                        // Keyframe markers (diamonds)
+                        Repeater {
+                            model: GeoOverlays.getAllKeyframes(overlayIndex)
+
+                            Rectangle {
+                                id: keyframeDiamond
+                                property var kfData: modelData
+                                x: (kfData.timeMs - model.startTime) * pixelsPerSecond / 1000 - width/2
+                                y: (trackBar.height - height) / 2
+                                width: 12
+                                height: 12
+                                rotation: 45
+                                color: keyframeSelected ? Theme.primaryColor : "#ffffff"
+                                border.color: kfData.extrusion > 0 ? "#ffcc00" : "#888888"
+                                border.width: 2
+
+                                property bool keyframeSelected: false
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+
+                                    onClicked: (mouse) => {
+                                        if (mouse.button === Qt.LeftButton) {
+                                            // Select this keyframe
+                                            keyframeDiamond.keyframeSelected = true
+                                            keyframeEditor.overlayIndex = overlayIndex
+                                            keyframeEditor.keyframeIndex = index
+                                            keyframeEditor.open()
+                                        }
+                                    }
+
+                                    onDoubleClicked: {
+                                        // Delete keyframe on double-click
+                                        GeoOverlays.removeKeyframe(overlayIndex, index)
+                                    }
+
+                                    ToolTip.visible: containsMouse
+                                    ToolTip.text: qsTr("Extrusion: %1\nOpacity: %2\nScale: %3\nClick to edit, double-click to delete")
+                                        .arg(kfData.extrusion.toFixed(1))
+                                        .arg(kfData.opacity.toFixed(2))
+                                        .arg(kfData.scale.toFixed(2))
+                                }
+                            }
+                        }
+
+                        // Drag to move bar
                         MouseArea {
                             id: barDragArea
                             anchors.fill: parent
@@ -251,11 +282,19 @@ Item {
                             drag.target: trackBar
                             drag.axis: Drag.XAxis
                             drag.minimumX: 20
+                            z: -1  // Below keyframe markers
 
                             onReleased: {
                                 let newStartTime = (trackBar.x - 20) / pixelsPerSecond * 1000
                                 newStartTime = Math.max(0, newStartTime)
-                                GeoOverlays.updateOverlay(index, {"startTime": newStartTime})
+                                GeoOverlays.updateOverlay(overlayIndex, {"startTime": newStartTime})
+                            }
+
+                            onDoubleClicked: (mouse) => {
+                                // Add keyframe at clicked position
+                                let localX = mouse.x
+                                let timeMs = model.startTime + localX / pixelsPerSecond * 1000
+                                GeoOverlays.addKeyframe(overlayIndex, timeMs)
                             }
                         }
 
@@ -284,7 +323,7 @@ Item {
                                     if (pressed) {
                                         let delta = (mouseX - startX) / pixelsPerSecond * 1000
                                         let newStart = Math.max(0, origStart + delta)
-                                        GeoOverlays.updateOverlay(index, {"startTime": newStart})
+                                        GeoOverlays.updateOverlay(overlayIndex, {"startTime": newStart})
                                     }
                                 }
                             }
@@ -316,7 +355,7 @@ Item {
                                     if (pressed) {
                                         let delta = (mouseX - startX) / pixelsPerSecond * 1000
                                         let newEnd = Math.max(model.startTime + 100, origEnd + delta)
-                                        GeoOverlays.updateOverlay(index, {"endTime": newEnd})
+                                        GeoOverlays.updateOverlay(overlayIndex, {"endTime": newEnd})
                                     }
                                 }
                             }
@@ -334,162 +373,12 @@ Item {
         trackFlickable.contentX = x
     }
 
-    // Country picker dialog
-    Dialog {
-        id: countryPicker
-        title: qsTr("Select Country")
-        modal: true
-        anchors.centerIn: parent
-        width: 400
-        height: 500
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacingSmall
-
-            TextField {
-                id: countrySearch
-                Layout.fillWidth: true
-                placeholderText: qsTr("Search countries...")
-                onTextChanged: countryListView.model = filterCountries(text)
-            }
-
-            ListView {
-                id: countryListView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: GeoJson ? GeoJson.countryList() : []
-
-                delegate: ItemDelegate {
-                    width: countryListView.width
-                    text: modelData.name
-                    onClicked: {
-                        let startTime = AnimController ? AnimController.currentTime : 0
-                        GeoOverlays.addCountry(modelData.code, modelData.name, startTime)
-                        countryPicker.close()
-                    }
-                }
-            }
-        }
-
-        function filterCountries(searchText) {
-            if (!GeoJson) return []
-            let all = GeoJson.countryList()
-            if (!searchText) return all
-            let lower = searchText.toLowerCase()
-            return all.filter(c => c.name.toLowerCase().includes(lower))
-        }
-
-        standardButtons: Dialog.Cancel
-    }
-
-    // Region picker dialog
-    Dialog {
-        id: regionPicker
-        title: qsTr("Select Region/State")
-        modal: true
-        anchors.centerIn: parent
-        width: 400
-        height: 500
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacingSmall
-
-            ComboBox {
-                id: countrySelector
-                Layout.fillWidth: true
-                model: GeoJson ? GeoJson.countryList() : []
-                textRole: "name"
-                displayText: currentIndex >= 0 ? model[currentIndex].name : qsTr("Select country first...")
-                onCurrentIndexChanged: {
-                    if (currentIndex >= 0) {
-                        regionListView.model = GeoJson.regionsForCountry(model[currentIndex].name)
-                    }
-                }
-            }
-
-            TextField {
-                id: regionSearch
-                Layout.fillWidth: true
-                placeholderText: qsTr("Search regions...")
-            }
-
-            ListView {
-                id: regionListView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: []
-
-                delegate: ItemDelegate {
-                    width: regionListView.width
-                    text: modelData.name
-                    onClicked: {
-                        let startTime = AnimController ? AnimController.currentTime : 0
-                        GeoOverlays.addRegion(modelData.code, modelData.name, modelData.countryName, startTime)
-                        regionPicker.close()
-                    }
-                }
-            }
-        }
-
-        standardButtons: Dialog.Cancel
-    }
-
-    // City picker dialog
-    Dialog {
-        id: cityPicker
-        title: qsTr("Select City")
-        modal: true
-        anchors.centerIn: parent
-        width: 400
-        height: 500
-
-        contentItem: ColumnLayout {
-            spacing: Theme.spacingSmall
-
-            TextField {
-                id: citySearch
-                Layout.fillWidth: true
-                placeholderText: qsTr("Search cities...")
-                onTextChanged: cityListView.model = filterCities(text)
-            }
-
-            ListView {
-                id: cityListView
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                model: GeoJson ? GeoJson.allCities() : []
-
-                delegate: ItemDelegate {
-                    width: cityListView.width
-                    text: modelData.name + (modelData.countryName ? " (" + modelData.countryName + ")" : "")
-                    onClicked: {
-                        let startTime = AnimController ? AnimController.currentTime : 0
-                        GeoOverlays.addCity(modelData.name, modelData.countryName, modelData.lat, modelData.lon, startTime)
-                        cityPicker.close()
-                    }
-                }
-            }
-        }
-
-        function filterCities(searchText) {
-            if (!GeoJson) return []
-            let all = GeoJson.allCities()
-            if (!searchText) return all.slice(0, 200)  // Limit to first 200 by default
-            let lower = searchText.toLowerCase()
-            return all.filter(c => c.name.toLowerCase().includes(lower)).slice(0, 200)
-        }
-
-        standardButtons: Dialog.Cancel
-    }
-
     // Overlay editor dialog
     Dialog {
         id: overlayEditor
         title: qsTr("Edit Overlay Appearance")
         modal: true
+        parent: Overlay.overlay
         anchors.centerIn: parent
         width: 350
 
@@ -569,6 +458,7 @@ Item {
         id: fillColorPicker
         title: qsTr("Select Fill Color")
         modal: true
+        parent: Overlay.overlay
         anchors.centerIn: parent
 
         contentItem: Grid {
@@ -601,6 +491,7 @@ Item {
         id: borderColorPicker
         title: qsTr("Select Border Color")
         modal: true
+        parent: Overlay.overlay
         anchors.centerIn: parent
 
         contentItem: Grid {
@@ -622,6 +513,260 @@ Item {
                                 GeoOverlays.updateOverlay(overlayEditor.overlayIndex, {"borderColor": modelData})
                             }
                             borderColorPicker.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Keyframe editor dialog - edit the 5 animatable properties
+    Dialog {
+        id: keyframeEditor
+        title: qsTr("Edit Keyframe Properties")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 380
+
+        property int overlayIndex: -1
+        property int keyframeIndex: -1
+        property var keyframeData: overlayIndex >= 0 && keyframeIndex >= 0 ?
+            GeoOverlays.getKeyframe(overlayIndex, keyframeIndex) : {}
+
+        onOpened: {
+            if (overlayIndex >= 0 && keyframeIndex >= 0) {
+                keyframeData = GeoOverlays.getKeyframe(overlayIndex, keyframeIndex)
+                extrusionSlider.value = keyframeData.extrusion || 0
+                opacitySlider.value = (keyframeData.opacity || 1) * 100
+                scaleSlider.value = (keyframeData.scale || 1) * 100
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingNormal
+
+            // Time position
+            RowLayout {
+                Label { text: qsTr("Time (ms):"); Layout.preferredWidth: 100 }
+                SpinBox {
+                    id: timeSpinBox
+                    from: 0
+                    to: 999999
+                    stepSize: 100
+                    value: keyframeEditor.keyframeData.timeMs || 0
+                    editable: true
+                    onValueModified: {
+                        if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                            GeoOverlays.moveKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex, value)
+                        }
+                    }
+                }
+            }
+
+            // Extrusion (0-100)
+            RowLayout {
+                Label { text: qsTr("Extrusion:"); Layout.preferredWidth: 100 }
+                Slider {
+                    id: extrusionSlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    value: keyframeEditor.keyframeData.extrusion || 0
+                    onMoved: {
+                        if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                            GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                {"extrusion": value})
+                        }
+                    }
+                }
+                Label {
+                    text: extrusionSlider.value.toFixed(0)
+                    Layout.preferredWidth: 30
+                }
+            }
+
+            // Fill Color
+            RowLayout {
+                Label { text: qsTr("Fill Color:"); Layout.preferredWidth: 100 }
+                Rectangle {
+                    width: 40
+                    height: 24
+                    color: keyframeEditor.keyframeData.fillColor || "#ff0000"
+                    border.color: Theme.borderColor
+                    radius: 4
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: kfFillColorPicker.open()
+                    }
+                }
+            }
+
+            // Border Color
+            RowLayout {
+                Label { text: qsTr("Border Color:"); Layout.preferredWidth: 100 }
+                Rectangle {
+                    width: 40
+                    height: 24
+                    color: keyframeEditor.keyframeData.borderColor || "#ff0000"
+                    border.color: Theme.borderColor
+                    radius: 4
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: kfBorderColorPicker.open()
+                    }
+                }
+            }
+
+            // Opacity (0-100%)
+            RowLayout {
+                Label { text: qsTr("Opacity:"); Layout.preferredWidth: 100 }
+                Slider {
+                    id: opacitySlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    stepSize: 1
+                    value: (keyframeEditor.keyframeData.opacity || 1) * 100
+                    onMoved: {
+                        if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                            GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                {"opacity": value / 100})
+                        }
+                    }
+                }
+                Label {
+                    text: (opacitySlider.value).toFixed(0) + "%"
+                    Layout.preferredWidth: 40
+                }
+            }
+
+            // Scale (80-150%)
+            RowLayout {
+                Label { text: qsTr("Scale:"); Layout.preferredWidth: 100 }
+                Slider {
+                    id: scaleSlider
+                    Layout.fillWidth: true
+                    from: 80
+                    to: 150
+                    stepSize: 1
+                    value: (keyframeEditor.keyframeData.scale || 1) * 100
+                    onMoved: {
+                        if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                            GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                {"scale": value / 100})
+                        }
+                    }
+                }
+                Label {
+                    text: (scaleSlider.value).toFixed(0) + "%"
+                    Layout.preferredWidth: 40
+                }
+            }
+
+            // Easing type
+            RowLayout {
+                Label { text: qsTr("Easing:"); Layout.preferredWidth: 100 }
+                ComboBox {
+                    Layout.fillWidth: true
+                    model: ["Linear", "Ease In/Out", "Ease In", "Ease Out", "Ease In/Out Cubic", "Ease In/Out Quint"]
+                    currentIndex: keyframeEditor.keyframeData.easingType || 1
+                    onCurrentIndexChanged: {
+                        if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                            GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                {"easingType": currentIndex})
+                        }
+                    }
+                }
+            }
+
+            // Delete button
+            Button {
+                text: qsTr("Delete Keyframe")
+                Layout.fillWidth: true
+                Material.background: Theme.errorColor
+                onClicked: {
+                    if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                        GeoOverlays.removeKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex)
+                        keyframeEditor.close()
+                    }
+                }
+            }
+        }
+
+        standardButtons: Dialog.Close
+    }
+
+    // Keyframe fill color picker
+    Dialog {
+        id: kfFillColorPicker
+        title: qsTr("Select Fill Color")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+
+        contentItem: Grid {
+            columns: 5
+            spacing: 4
+            Repeater {
+                model: ["#80ff0000", "#80ff8000", "#80ffff00", "#8000ff00", "#8000ffff",
+                        "#800000ff", "#80ff00ff", "#80ffffff", "#80808080", "#80000000"]
+                Rectangle {
+                    width: 32
+                    height: 32
+                    color: modelData
+                    border.color: Theme.borderColor
+                    radius: 4
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                                GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                    {"fillColor": modelData})
+                                keyframeEditor.keyframeData = GeoOverlays.getKeyframe(
+                                    keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex)
+                            }
+                            kfFillColorPicker.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Keyframe border color picker
+    Dialog {
+        id: kfBorderColorPicker
+        title: qsTr("Select Border Color")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+
+        contentItem: Grid {
+            columns: 5
+            spacing: 4
+            Repeater {
+                model: ["#ffff0000", "#ffff8000", "#ffffff00", "#ff00ff00", "#ff00ffff",
+                        "#ff0000ff", "#ffff00ff", "#ffffffff", "#ff808080", "#ff000000"]
+                Rectangle {
+                    width: 32
+                    height: 32
+                    color: modelData
+                    border.color: Theme.borderColor
+                    radius: 4
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: {
+                            if (keyframeEditor.overlayIndex >= 0 && keyframeEditor.keyframeIndex >= 0) {
+                                GeoOverlays.updateKeyframe(keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex,
+                                    {"borderColor": modelData})
+                                keyframeEditor.keyframeData = GeoOverlays.getKeyframe(
+                                    keyframeEditor.overlayIndex, keyframeEditor.keyframeIndex)
+                            }
+                            kfBorderColorPicker.close()
                         }
                     }
                 }

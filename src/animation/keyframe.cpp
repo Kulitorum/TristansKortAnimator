@@ -8,8 +8,6 @@ QJsonObject Keyframe::toJson() const {
     obj["bearing"] = bearing;
     obj["tilt"] = tilt;
     obj["timeMs"] = timeMs;
-    obj["interpolation"] = interpolationModeInt;
-    obj["easing"] = easingTypeInt;
     return obj;
 }
 
@@ -21,8 +19,5 @@ Keyframe Keyframe::fromJson(const QJsonObject& obj) {
     kf.bearing = obj["bearing"].toDouble();
     kf.tilt = obj["tilt"].toDouble();
     kf.timeMs = obj["timeMs"].toDouble(0.0);
-    kf.interpolationModeInt = obj["interpolation"].toInt(1);
-    kf.easingTypeInt = obj["easing"].toInt(1);
-    kf.syncEnumsFromInts();
     return kf;
 }

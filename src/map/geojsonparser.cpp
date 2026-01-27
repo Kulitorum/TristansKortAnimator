@@ -339,6 +339,23 @@ QVariantList GeoJsonParser::allCities() const {
     return result;
 }
 
+QVariantMap GeoJsonParser::cityByName(const QString& name) const {
+    for (const auto& feature : m_features) {
+        if (feature.type == "city" && feature.name.compare(name, Qt::CaseInsensitive) == 0) {
+            QVariantMap item;
+            item["name"] = feature.name;
+            item["lat"] = feature.centroid.x();
+            item["lon"] = feature.centroid.y();
+            item["countryName"] = feature.properties.value("adm0name").toString();
+            if (item["countryName"].toString().isEmpty()) {
+                item["countryName"] = feature.code;
+            }
+            return item;
+        }
+    }
+    return QVariantMap();
+}
+
 void GeoJsonParser::loadBuiltInCities() {
     // Major world cities with population data
     struct CityData {

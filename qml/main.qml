@@ -15,6 +15,9 @@ ApplicationWindow {
     title: "Tristans Kort Animator" + (ProjectManager.hasUnsavedChanges ? " *" : "")
     color: Theme.backgroundColor
 
+    // View mode: "2D" or "3D"
+    property string viewMode: "2D"
+
     // Material theme configuration
     Material.theme: Material.Dark
     Material.primary: Theme.primaryColor
@@ -54,6 +57,10 @@ ApplicationWindow {
     Shortcut {
         sequence: "K"
         onActivated: MainController.addKeyframeAtCurrentPosition()
+    }
+    Shortcut {
+        sequence: "V"
+        onActivated: root.viewMode = (root.viewMode === "2D" ? "3D" : "2D")
     }
 
     // Menu bar
@@ -149,6 +156,12 @@ ApplicationWindow {
                 checkable: true
                 checked: Settings.shadeNonHighlighted
                 onTriggered: Settings.shadeNonHighlighted = checked
+            }
+            MenuSeparator {}
+            Action {
+                text: root.viewMode === "2D" ? qsTr("Switch to &3D Globe") : qsTr("Switch to &2D Map")
+                shortcut: "V"
+                onTriggered: root.viewMode = (root.viewMode === "2D" ? "3D" : "2D")
             }
             MenuSeparator {}
             Menu {
@@ -251,21 +264,130 @@ ApplicationWindow {
                     highlighted: true
                 }
 
-                // Autokey toggle
+                // Autokey toggle with recording indicator
                 Button {
+                    id: autoKeyButton
                     text: qsTr("Autokey")
                     checkable: true
                     checked: Settings.autoKey
                     onClicked: Settings.autoKey = checked
 
                     ToolTip.visible: hovered
-                    ToolTip.text: qsTr("Auto-add keyframes when moving camera")
+                    ToolTip.text: qsTr("Auto-add keyframes when moving camera (3ds Max style)")
 
                     background: Rectangle {
-                        color: parent.checked ? Theme.primaryColor : Theme.surfaceColorLight
+                        id: autoKeyBg
+                        color: parent.checked ? "#cc3333" : Theme.surfaceColorLight
                         radius: Theme.radiusSmall
-                        border.color: parent.checked ? Theme.primaryColor : Theme.borderColor
-                        border.width: 1
+                        border.color: parent.checked ? "#ff4444" : Theme.borderColor
+                        border.width: parent.checked ? 2 : 1
+
+                        // Pulsing animation when active
+                        SequentialAnimation on color {
+                            running: autoKeyButton.checked
+                            loops: Animation.Infinite
+                            ColorAnimation { to: "#dd4444"; duration: 600; easing.type: Easing.InOutQuad }
+                            ColorAnimation { to: "#aa2222"; duration: 600; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
+                    contentItem: Row {
+                        spacing: 6
+                        anchors.centerIn: parent
+
+                        // Recording dot
+                        Rectangle {
+                            width: 8
+                            height: 8
+                            radius: 4
+                            color: autoKeyButton.checked ? "#ff6666" : "transparent"
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: autoKeyButton.checked
+
+                            SequentialAnimation on opacity {
+                                running: autoKeyButton.checked
+                                loops: Animation.Infinite
+                                NumberAnimation { to: 0.4; duration: 500 }
+                                NumberAnimation { to: 1.0; duration: 500 }
+                            }
+                        }
+
+                        Text {
+                            text: autoKeyButton.text
+                            color: autoKeyButton.checked ? "white" : Theme.textColor
+                            font.bold: autoKeyButton.checked
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
+
+                Item { Layout.preferredWidth: Theme.spacingLarge }
+
+                // 2D/3D View toggle
+                Rectangle {
+                    implicitWidth: viewToggleRow.width + 8
+                    implicitHeight: 32
+                    color: Theme.surfaceColorLight
+                    radius: Theme.radiusSmall
+                    border.color: Theme.borderColor
+                    border.width: 1
+
+                    RowLayout {
+                        id: viewToggleRow
+                        anchors.centerIn: parent
+                        spacing: 0
+
+                        Rectangle {
+                            width: 40
+                            height: 28
+                            radius: Theme.radiusSmall
+                            color: root.viewMode === "2D" ? Theme.primaryColor : "transparent"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "2D"
+                                color: root.viewMode === "2D" ? "white" : Theme.textColorDim
+                                font.bold: root.viewMode === "2D"
+                                font.pixelSize: 12
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.viewMode = "2D"
+                            }
+                        }
+
+                        Rectangle {
+                            width: 40
+                            height: 28
+                            radius: Theme.radiusSmall
+                            color: root.viewMode === "3D" ? Theme.primaryColor : "transparent"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "3D"
+                                color: root.viewMode === "3D" ? "white" : Theme.textColorDim
+                                font.bold: root.viewMode === "3D"
+                                font.pixelSize: 12
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.viewMode = "3D"
+                            }
+                        }
+                    }
+
+                    ToolTip.visible: viewToggleHover.containsMouse
+                    ToolTip.text: qsTr("Switch between 2D map and 3D globe view")
+
+                    MouseArea {
+                        id: viewToggleHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
                     }
                 }
 
@@ -310,22 +432,45 @@ ApplicationWindow {
                 }
             }
 
-            // Center - Map and Timeline
+            // Center - Map/Globe and Timeline
             ColumnLayout {
                 SplitView.fillWidth: true
                 spacing: 0
 
-                // Map view
-                MapView {
-                    id: mapView
+                // View container (2D Map or 3D Globe)
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+
+                    // 2D Map view
+                    MapView {
+                        id: mapView
+                        anchors.fill: parent
+                        visible: root.viewMode === "2D"
+                    }
+
+                    // 3D Globe view
+                    Loader {
+                        id: globeLoader
+                        anchors.fill: parent
+                        active: root.viewMode === "3D"
+                        source: "components/GlobeView.qml"
+
+                        onLoaded: {
+                            if (item) {
+                                item.toggle2DView.connect(function() {
+                                    root.viewMode = "2D"
+                                })
+                            }
+                        }
+                    }
                 }
 
-                // Timeline
+                // Unified Timeline (Camera keyframes + Overlay tracks)
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Theme.timelineHeight
+                    Layout.preferredHeight: 220
+                    Layout.minimumHeight: 150
                     color: Theme.timelineBackground
 
                     Timeline {
@@ -445,10 +590,20 @@ ApplicationWindow {
     }
 
     onClosing: (close) => {
-        if (ProjectManager.hasUnsavedChanges) {
+        // Auto-save on exit if there's a project path
+        if (ProjectManager.hasUnsavedChanges && ProjectManager.projectPath !== "") {
+            ProjectManager.saveProject()
+        }
+        // If unsaved changes and no project path, ask user
+        else if (ProjectManager.hasUnsavedChanges) {
             close.accepted = false
             unsavedChangesDialog.pendingAction = () => Qt.quit()
             unsavedChangesDialog.open()
         }
+    }
+
+    // Auto-load last project on startup
+    Component.onCompleted: {
+        ProjectManager.loadLastProject()
     }
 }

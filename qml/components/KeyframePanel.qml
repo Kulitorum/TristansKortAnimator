@@ -27,11 +27,16 @@ Rectangle {
                 zoomSlider.value = kf.zoom
                 bearingSlider.value = kf.bearing
                 tiltSlider.value = kf.tilt
-                timeSpinBox.value = kf.time
-                interpCombo.currentIndex = kf.interpolation
-                easingCombo.currentIndex = kf.easing
+                timeSpinBox.value = kf.time / 1000.0  // Convert ms to seconds
             }
         }
+    }
+
+    // Format time as mm:ss.s
+    function formatTime(seconds) {
+        var mins = Math.floor(seconds / 60)
+        var secs = seconds % 60
+        return mins.toString().padStart(2, '0') + ":" + secs.toFixed(1).padStart(4, '0')
     }
 
     onSelectedIndexChanged: refreshSliders()
@@ -54,11 +59,21 @@ Rectangle {
         spacing: Theme.spacingNormal
 
         // Header
-        Text {
-            text: qsTr("Keyframe Properties")
-            color: Theme.textColor
-            font.pixelSize: Theme.fontSizeLarge
-            font.bold: true
+        RowLayout {
+            Layout.fillWidth: true
+            Text {
+                text: qsTr("Keyframe Properties")
+                color: Theme.textColor
+                font.pixelSize: Theme.fontSizeLarge
+                font.bold: true
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                visible: hasKeyframe
+                text: qsTr("#%1 of %2").arg(selectedIndex + 1).arg(Keyframes ? Keyframes.count : 0)
+                color: Theme.textColorDim
+                font.pixelSize: Theme.fontSizeSmall
+            }
         }
 
         Rectangle {
@@ -86,6 +101,58 @@ Rectangle {
             ColumnLayout {
                 width: parent.width
                 spacing: Theme.spacingNormal
+
+                // Time section
+                GroupBox {
+                    title: qsTr("Timing")
+                    Layout.fillWidth: true
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: Theme.spacingSmall
+
+                        Text {
+                            text: qsTr("Time:")
+                            color: Theme.textColorDim
+                        }
+
+                        SpinBox {
+                            id: timeSpinBox
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 36000  // 10 hours max
+                            stepSize: 1
+                            editable: true
+
+                            property real realValue: value
+
+                            textFromValue: function(value, locale) {
+                                return formatTime(value)
+                            }
+
+                            valueFromText: function(text, locale) {
+                                // Parse mm:ss.s format
+                                var parts = text.split(":")
+                                if (parts.length === 2) {
+                                    var mins = parseInt(parts[0]) || 0
+                                    var secs = parseFloat(parts[1]) || 0
+                                    return mins * 60 + secs
+                                }
+                                return parseFloat(text) || 0
+                            }
+
+                            onValueModified: {
+                                // Convert seconds to milliseconds and update keyframe
+                                Keyframes.setKeyframeTime(selectedIndex, value * 1000.0)
+                            }
+                        }
+
+                        Text {
+                            text: qsTr("sec")
+                            color: Theme.textColorDim
+                        }
+                    }
+                }
 
                 // Position section
                 GroupBox {
@@ -229,49 +296,6 @@ Rectangle {
                     }
                 }
 
-                // Animation section
-                GroupBox {
-                    title: qsTr("Animation")
-                    Layout.fillWidth: true
-
-                    GridLayout {
-                        columns: 2
-                        columnSpacing: Theme.spacingSmall
-                        rowSpacing: Theme.spacingSmall
-                        anchors.fill: parent
-
-                        Text { text: qsTr("Time (ms):"); color: Theme.textColorDim }
-                        SpinBox {
-                            id: timeSpinBox
-                            from: 0
-                            to: 600000
-                            stepSize: 100
-                            value: getVal("time", 0)
-                            onValueModified: if (hasKeyframe) Keyframes.setKeyframeTime(selectedIndex, value)
-                            editable: true
-                            Layout.fillWidth: true
-                        }
-
-                        Text { text: qsTr("Interpolation:"); color: Theme.textColorDim }
-                        ComboBox {
-                            id: interpCombo
-                            model: Theme.interpolationNames
-                            currentIndex: getVal("interpolation", 0)
-                            onActivated: if (hasKeyframe) Keyframes.updateKeyframe(selectedIndex, {"interpolation": currentIndex})
-                            Layout.fillWidth: true
-                        }
-
-                        Text { text: qsTr("Easing:"); color: Theme.textColorDim }
-                        ComboBox {
-                            id: easingCombo
-                            model: Theme.easingNames
-                            currentIndex: getVal("easing", 1)
-                            onActivated: if (hasKeyframe) Keyframes.updateKeyframe(selectedIndex, {"easing": currentIndex})
-                            Layout.fillWidth: true
-                        }
-                    }
-                }
-
                 // Actions
                 RowLayout {
                     Layout.fillWidth: true
@@ -296,11 +320,38 @@ Rectangle {
                         }
                         Layout.fillWidth: true
                     }
+                }
+
+                // Reorder and delete
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingSmall
+
+                    Button {
+                        text: "↑"
+                        enabled: selectedIndex > 0
+                        onClicked: {
+                            Keyframes.moveKeyframe(selectedIndex, selectedIndex - 1)
+                            Keyframes.setCurrentIndex(selectedIndex - 1)
+                        }
+                        Layout.preferredWidth: 40
+                    }
+
+                    Button {
+                        text: "↓"
+                        enabled: Keyframes && selectedIndex < Keyframes.count - 1
+                        onClicked: {
+                            Keyframes.moveKeyframe(selectedIndex, selectedIndex + 1)
+                            Keyframes.setCurrentIndex(selectedIndex + 1)
+                        }
+                        Layout.preferredWidth: 40
+                    }
+
+                    Item { Layout.fillWidth: true }
 
                     Button {
                         text: qsTr("Delete")
                         onClicked: Keyframes.removeKeyframe(selectedIndex)
-                        Layout.fillWidth: true
                     }
                 }
             }

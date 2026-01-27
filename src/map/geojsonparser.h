@@ -50,6 +50,9 @@ public:
     // Get all cities with their coordinates
     Q_INVOKABLE QVariantList allCities() const;
 
+    // Get a city by name
+    Q_INVOKABLE QVariantMap cityByName(const QString& name) const;
+
 signals:
     void loaded();
     void loadError(const QString& error);

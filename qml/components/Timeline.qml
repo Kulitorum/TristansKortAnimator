@@ -1,18 +1,19 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import TristansKortAnimator
 
 Item {
     id: timeline
 
     property real pixelsPerSecond: 100 * (Settings ? Settings.timelineZoom : 1.0)
-    property real totalDuration: Keyframes ? Keyframes.totalDuration : 0
+    property real totalDuration: AnimController ? AnimController.totalDuration : 60000
     property real currentTime: AnimController ? AnimController.currentTime : 0
+    property bool useExplicitDuration: AnimController ? AnimController.useExplicitDuration : true
+    property real explicitDuration: AnimController ? AnimController.explicitDuration : 60000
 
-    // Minimum timeline extent in milliseconds (always show at least 60 seconds)
-    property real minTimelineExtent: 60000
-    // Effective timeline width - max of content duration or minimum extent
-    property real effectiveExtent: Math.max(totalDuration, minTimelineExtent)
+    // Effective timeline width - always use totalDuration (which now handles explicit mode)
+    property real effectiveExtent: totalDuration
 
     // Enable keyboard focus for arrow key navigation
     focus: true
@@ -78,7 +79,54 @@ Item {
                 }
             }
         }
+
+        // Ruler mouse area for scrubbing and panning
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: rulerPanning ? Qt.ClosedHandCursor : Qt.ArrowCursor
+
+            property bool rulerPanning: false
+            property real panStartX: 0
+            property real panStartContentX: 0
+
+            onPressed: (mouse) => {
+                if (mouse.button === Qt.RightButton) {
+                    rulerPanning = true
+                    panStartX = mouse.x
+                    panStartContentX = timelineFlickable.contentX
+                    return
+                }
+                // Left click scrubs
+                let time = (timelineFlickable.contentX + mouse.x - 20) / pixelsPerSecond * 1000
+                AnimController.setCurrentTime(Math.max(0, time))
+            }
+            onPositionChanged: (mouse) => {
+                if (rulerPanning) {
+                    let deltaX = panStartX - mouse.x
+                    let newContentX = panStartContentX + deltaX
+                    newContentX = Math.max(0, Math.min(
+                        timelineFlickable.contentWidth - timelineFlickable.width,
+                        newContentX
+                    ))
+                    timelineFlickable.contentX = newContentX
+                    return
+                }
+                if (pressed) {
+                    let time = (timelineFlickable.contentX + mouse.x - 20) / pixelsPerSecond * 1000
+                    AnimController.setCurrentTime(Math.max(0, time))
+                }
+            }
+            onReleased: {
+                rulerPanning = false
+            }
+        }
     }
+
+    // Track heights
+    property real cameraTrackHeight: 50
+    property real overlayTrackHeight: 40
+    property real totalTracksHeight: cameraTrackHeight + (GeoOverlays ? GeoOverlays.count * overlayTrackHeight : 0)
 
     // Timeline content
     Flickable {
@@ -86,21 +134,21 @@ Item {
         anchors.top: ruler.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 80  // Fixed height for keyframe track area
+        anchors.bottom: durationBar.top
         contentWidth: Math.max(parent.width, 40 + effectiveExtent * pixelsPerSecond / 1000 + 200)
+        contentHeight: Math.max(height, totalTracksHeight + 20)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        interactive: false  // Disable drag-to-scroll, use mousewheel instead
+        interactive: false
 
-        // Track background
+        // Track background with grid lines
         Rectangle {
-            anchors.fill: parent
+            width: timelineFlickable.contentWidth
+            height: Math.max(timelineFlickable.height, totalTracksHeight + 20)
             color: "transparent"
 
-            // Grid lines
             Repeater {
                 model: Math.ceil(effectiveExtent / 1000) + 2
-
                 Rectangle {
                     x: 20 + index * pixelsPerSecond
                     width: 1
@@ -111,19 +159,26 @@ Item {
             }
         }
 
-        // Keyframe track (visual background only)
+        // Camera keyframe track
         Rectangle {
             id: keyframeTrack
-            anchors.top: parent.top
-            anchors.topMargin: 20
             x: 0
+            y: 5
             width: timelineFlickable.contentWidth
-            height: 40
+            height: cameraTrackHeight - 10
             color: Theme.surfaceColorLight
             radius: Theme.radiusSmall
+
+            Text {
+                x: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Camera"
+                color: Theme.textColorDim
+                font.pixelSize: 10
+            }
         }
 
-        // Keyframe markers - direct children of Flickable for proper z-ordering
+        // Camera keyframe markers
         Repeater {
             model: Keyframes
 
@@ -135,29 +190,24 @@ Item {
                 multiSelected: Keyframes.isSelected(index)
                 keyframeTime: model.time
                 pixelsPerSecond: timeline.pixelsPerSecond
-                z: 50  // Above playhead drag area (z:10)
+                z: 50
 
                 onClicked: (withCtrl) => {
                     if (withCtrl) {
-                        // Ctrl+click: toggle selection
                         if (Keyframes.isSelected(index)) {
                             Keyframes.deselectKeyframe(index)
                         } else {
                             Keyframes.selectKeyframe(index, true)
                         }
                     } else {
-                        // Regular click: select single and navigate
                         Keyframes.currentIndex = index
                         MainController.goToKeyframe(index)
                     }
                 }
 
                 onDragged: (newX) => {
-                    // Convert x position back to time and update keyframe
                     let newTime = (newX - 20 + width/2) / pixelsPerSecond * 1000
                     newTime = Math.max(0, newTime)
-
-                    // If this keyframe is part of multi-selection, move all selected
                     if (Keyframes.selectedIndices.length > 1 && Keyframes.isSelected(index)) {
                         let oldTime = model.time
                         let deltaTime = newTime - oldTime
@@ -169,12 +219,267 @@ Item {
             }
         }
 
-        // Playhead
+        // Overlay tracks area - click to scrub (behind track bars)
+        MouseArea {
+            id: overlaysScrubArea
+            x: 0
+            y: cameraTrackHeight
+            width: timelineFlickable.contentWidth
+            height: Math.max(0, GeoOverlays.count * overlayTrackHeight)
+            z: -1  // Behind track bars
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: isPanning ? Qt.ClosedHandCursor : Qt.ArrowCursor
+
+            property bool isPanning: false
+            property real panStartX: 0
+            property real panStartContentX: 0
+
+            onPressed: (mouse) => {
+                // Right-click: start panning
+                if (mouse.button === Qt.RightButton) {
+                    isPanning = true
+                    panStartX = mouse.x
+                    panStartContentX = timelineFlickable.contentX
+                    return
+                }
+
+                Keyframes.editMode = false
+                let time = (mouse.x - 20) / pixelsPerSecond * 1000
+                AnimController.setCurrentTime(Math.max(0, time))
+            }
+            onPositionChanged: (mouse) => {
+                if (isPanning) {
+                    let deltaX = panStartX - mouse.x
+                    let newContentX = panStartContentX + deltaX
+                    newContentX = Math.max(0, Math.min(
+                        timelineFlickable.contentWidth - timelineFlickable.width,
+                        newContentX
+                    ))
+                    timelineFlickable.contentX = newContentX
+                    return
+                }
+
+                if (pressed) {
+                    let time = (mouse.x - 20) / pixelsPerSecond * 1000
+                    AnimController.setCurrentTime(Math.max(0, time))
+                }
+            }
+            onReleased: {
+                isPanning = false
+            }
+        }
+
+        // Overlay tracks
+        Repeater {
+            model: GeoOverlays
+
+            Rectangle {
+                id: overlayTrackRow
+                x: 0
+                y: cameraTrackHeight + index * overlayTrackHeight
+                width: timelineFlickable.contentWidth
+                height: overlayTrackHeight
+                color: index % 2 === 0 ? "#1a2a3a" : "#152535"
+
+                property int overlayIdx: index
+                // Store model values in properties for stable bindings
+                property real trackStartTime: model.startTime
+                property real trackEndTime: model.endTime
+                property real trackFadeIn: model.fadeInDuration || 0
+                property real trackFadeOut: model.fadeOutDuration || 0
+
+                // Track label - integrated like Camera label
+                Text {
+                    x: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: model.name
+                    color: Theme.textColorDim
+                    font.pixelSize: 10
+                    z: 1
+                }
+
+                // Track bar - positioned in timeline coordinates
+                Rectangle {
+                    id: overlayBar
+                    x: 20 + trackStartTime * pixelsPerSecond / 1000
+                    y: 4
+                    width: Math.max(30, (trackEndTime - trackStartTime) * pixelsPerSecond / 1000)
+                    height: parent.height - 8
+                    radius: 3
+                    color: Qt.rgba(model.borderColor.r, model.borderColor.g, model.borderColor.b, 0.3)
+                    border.color: model.borderColor
+                    border.width: 2
+                    z: 5
+
+                    // Fade in indicator
+                    Rectangle {
+                        visible: trackFadeIn > 0
+                        width: Math.min(parent.width * 0.4, trackFadeIn * pixelsPerSecond / 1000)
+                        height: parent.height
+                        anchors.left: parent.left
+                        radius: parent.radius
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "transparent" }
+                            GradientStop { position: 1.0; color: Qt.rgba(model.borderColor.r, model.borderColor.g, model.borderColor.b, 0.5) }
+                        }
+                    }
+
+                    // Fade out indicator
+                    Rectangle {
+                        visible: trackFadeOut > 0
+                        width: Math.min(parent.width * 0.4, trackFadeOut * pixelsPerSecond / 1000)
+                        height: parent.height
+                        anchors.right: parent.right
+                        radius: parent.radius
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: Qt.rgba(model.borderColor.r, model.borderColor.g, model.borderColor.b, 0.5) }
+                            GradientStop { position: 1.0; color: "transparent" }
+                        }
+                    }
+
+                    // Left handle - trim start time
+                    Rectangle {
+                        id: leftHandle
+                        width: 6
+                        height: parent.height
+                        anchors.left: parent.left
+                        color: leftArea.containsMouse || leftArea.pressed ? Theme.primaryColor : "transparent"
+                        z: 10
+
+                        MouseArea {
+                            id: leftArea
+                            anchors.fill: parent
+                            anchors.margins: -5
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeHorCursor
+                            property real dragStartGlobalX: 0
+                            property real origStart: 0
+                            property real origEnd: 0
+                            property real origFadeIn: 0
+                            property real origFadeOut: 0
+
+                            onPressed: (mouse) => {
+                                // Use global coordinates for stable tracking
+                                let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                                dragStartGlobalX = globalPos.x
+                                origStart = trackStartTime
+                                origEnd = trackEndTime
+                                origFadeIn = trackFadeIn
+                                origFadeOut = trackFadeOut
+                            }
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                                    let delta = (globalPos.x - dragStartGlobalX) / pixelsPerSecond * 1000
+                                    let newStart = Math.max(0, Math.min(origEnd - 500, origStart + delta))
+                                    GeoOverlays.setOverlayTiming(overlayIdx, newStart, origFadeIn, origEnd, origFadeOut)
+                                }
+                            }
+                        }
+                    }
+
+                    // Right handle - trim end time
+                    Rectangle {
+                        id: rightHandle
+                        width: 6
+                        height: parent.height
+                        anchors.right: parent.right
+                        color: rightArea.containsMouse || rightArea.pressed ? Theme.primaryColor : "transparent"
+                        z: 10
+
+                        MouseArea {
+                            id: rightArea
+                            anchors.fill: parent
+                            anchors.margins: -5
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeHorCursor
+                            property real dragStartGlobalX: 0
+                            property real origStart: 0
+                            property real origEnd: 0
+                            property real origFadeIn: 0
+                            property real origFadeOut: 0
+
+                            onPressed: (mouse) => {
+                                let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                                dragStartGlobalX = globalPos.x
+                                origStart = trackStartTime
+                                origEnd = trackEndTime
+                                origFadeIn = trackFadeIn
+                                origFadeOut = trackFadeOut
+                            }
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                                    let delta = (globalPos.x - dragStartGlobalX) / pixelsPerSecond * 1000
+                                    let newEnd = Math.max(origStart + 500, origEnd + delta)
+                                    GeoOverlays.setOverlayTiming(overlayIdx, origStart, origFadeIn, newEnd, origFadeOut)
+                                }
+                            }
+                        }
+                    }
+
+                    // Middle drag - move entire bar
+                    MouseArea {
+                        id: middleArea
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                        property real dragStartGlobalX: 0
+                        property real origStart: 0
+                        property real origEnd: 0
+                        property real origFadeIn: 0
+                        property real origFadeOut: 0
+
+                        onPressed: (mouse) => {
+                            let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                            dragStartGlobalX = globalPos.x
+                            origStart = trackStartTime
+                            origEnd = trackEndTime
+                            origFadeIn = trackFadeIn
+                            origFadeOut = trackFadeOut
+                        }
+                        onPositionChanged: (mouse) => {
+                            if (pressed) {
+                                let globalPos = mapToItem(overlayTrackRow, mouse.x, mouse.y)
+                                let delta = (globalPos.x - dragStartGlobalX) / pixelsPerSecond * 1000
+                                let duration = origEnd - origStart
+                                let newStart = Math.max(0, origStart + delta)
+                                GeoOverlays.setOverlayTiming(overlayIdx, newStart, origFadeIn, newStart + duration, origFadeOut)
+                            }
+                        }
+                    }
+                }
+
+                // Delete button
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "×"
+                    color: delMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
+                    font.pixelSize: 14
+                    z: 20
+                    MouseArea {
+                        id: delMouse
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: GeoOverlays.removeOverlay(overlayIdx)
+                    }
+                }
+            }
+        }
+
+        // Playhead - spans all tracks
         Rectangle {
             id: playhead
             x: 20 + currentTime * pixelsPerSecond / 1000
             width: 2
-            height: parent.height
+            height: Math.max(timelineFlickable.height, totalTracksHeight + 20)
             color: Theme.playheadColor
             z: 100
 
@@ -187,17 +492,17 @@ Item {
                 anchors.bottom: parent.top
             }
         }
-
     }
 
-    // SCRUB OVERLAY - Outside Flickable for guaranteed event handling
-    // Handles ALL timeline mouse interactions: scrubbing, keyframe selection, dragging
+    // SCRUB OVERLAY - Only covers camera track area
     MouseArea {
         id: scrubOverlay
         anchors.top: ruler.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 80  // Fixed height for keyframe track area
+        height: cameraTrackHeight  // Only camera track, not overlay tracks
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        cursorShape: isPanning ? Qt.ClosedHandCursor : Qt.ArrowCursor
 
         // Frame selection rectangle (rubber band)
         Rectangle {
@@ -211,8 +516,11 @@ Item {
         property bool isDraggingScrub: false
         property bool isDraggingKeyframe: false
         property bool isDraggingSelection: false
+        property bool isPanning: false
         property int draggedKeyframeIndex: -1
         property real dragStartX: 0
+        property real panStartX: 0
+        property real panStartContentX: 0
 
         // Find keyframe index at position, returns -1 if none
         function keyframeIndexAt(mouseX, mouseY) {
@@ -234,6 +542,14 @@ Item {
         onPressed: (mouse) => {
             // Take keyboard focus for arrow key navigation
             timeline.forceActiveFocus()
+
+            // Right-click: start panning
+            if (mouse.button === Qt.RightButton) {
+                isPanning = true
+                panStartX = mouse.x
+                panStartContentX = timelineFlickable.contentX
+                return
+            }
 
             let kfIndex = keyframeIndexAt(mouse.x, mouse.y)
 
@@ -275,6 +591,17 @@ Item {
         }
 
         onPositionChanged: (mouse) => {
+            if (isPanning) {
+                let deltaX = panStartX - mouse.x
+                let newContentX = panStartContentX + deltaX
+                newContentX = Math.max(0, Math.min(
+                    timelineFlickable.contentWidth - timelineFlickable.width,
+                    newContentX
+                ))
+                timelineFlickable.contentX = newContentX
+                return
+            }
+
             if (isDraggingScrub) {
                 seekToPosition(timelineFlickable.contentX + mouse.x)
             } else if (isDraggingKeyframe && draggedKeyframeIndex >= 0) {
@@ -301,6 +628,11 @@ Item {
         }
 
         onReleased: (mouse) => {
+            if (isPanning) {
+                isPanning = false
+                return
+            }
+
             if (isDraggingSelection) {
                 selectionRect.visible = false
 
@@ -333,6 +665,7 @@ Item {
             isDraggingScrub = false
             isDraggingKeyframe = false
             isDraggingSelection = false
+            isPanning = false
             draggedKeyframeIndex = -1
         }
 
@@ -377,50 +710,6 @@ Item {
         }
     }
 
-    // Geographic overlay tracks section (below keyframes)
-    GeoOverlayTimeline {
-        id: geoOverlayTimeline
-        anchors.top: scrubOverlay.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: zoomControls.top
-        anchors.bottomMargin: Theme.spacingSmall
-        pixelsPerSecond: timeline.pixelsPerSecond
-        totalDuration: timeline.effectiveExtent
-        visible: GeoOverlays.count > 0 || geoOverlayTimeline.height > 40
-
-        // Sync scroll with main timeline
-        contentX: timelineFlickable.contentX
-        onContentXChanged: {
-            if (contentX !== timelineFlickable.contentX) {
-                timelineFlickable.contentX = contentX
-            }
-        }
-    }
-
-    // Timeline zoom control
-    Row {
-        id: zoomControls
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.spacingSmall
-        spacing: Theme.spacingSmall
-
-        Text {
-            text: qsTr("Zoom:")
-            color: Theme.textColorDim
-            anchors.verticalCenter: parent.verticalCenter
-        }
-
-        Slider {
-            width: 100
-            from: 0.1
-            to: 8.0
-            value: Settings.timelineZoom
-            onMoved: Settings.timelineZoom = value
-        }
-    }
-
     function seekToPosition(x) {
         let time = (x - 20) / pixelsPerSecond * 1000
         // Only clamp to >= 0, allow seeking beyond keyframes to add new ones
@@ -433,5 +722,143 @@ Item {
         let minutes = Math.floor(seconds / 60)
         seconds = seconds % 60
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+    }
+
+    // Duration control bar at the bottom
+    Rectangle {
+        id: durationBar
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 30
+        color: Theme.surfaceColor
+        z: 200
+        clip: true
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: Theme.borderColor
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            anchors.topMargin: 3
+            anchors.bottomMargin: 3
+            spacing: 8
+
+            // Duration control
+            Text {
+                text: "Duration:"
+                color: Theme.textColorDim
+                font.pixelSize: 11
+            }
+
+            TextField {
+                id: durationField
+                implicitWidth: 70
+                implicitHeight: 24
+                text: Math.round(explicitDuration / 1000).toString()
+                horizontalAlignment: TextInput.AlignHCenter
+                validator: IntValidator { bottom: 1; top: 3600 }
+                font.pixelSize: 12
+
+                onEditingFinished: {
+                    let val = parseInt(text) || 60
+                    val = Math.max(1, Math.min(3600, val))
+                    if (AnimController) {
+                        AnimController.explicitDuration = val * 1000
+                    }
+                }
+
+                background: Rectangle {
+                    color: Theme.surfaceColorLight
+                    border.color: durationField.activeFocus ? Theme.primaryColor : Theme.borderColor
+                    border.width: 1
+                    radius: 3
+                }
+            }
+
+            Text {
+                text: "sec (" + formatTime(explicitDuration) + ")"
+                color: Theme.textColorDim
+                font.pixelSize: 11
+            }
+
+            // Use explicit duration checkbox (custom compact version)
+            Rectangle {
+                implicitWidth: fixedRow.width + 8
+                implicitHeight: 20
+                color: fixedMouse.containsMouse ? Theme.surfaceColorLight : "transparent"
+                radius: 3
+
+                Row {
+                    id: fixedRow
+                    anchors.centerIn: parent
+                    spacing: 4
+
+                    Rectangle {
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: "transparent"
+                        border.color: useExplicitDuration ? Theme.primaryColor : Theme.textColorDim
+                        border.width: 1
+                        radius: 2
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 8
+                            height: 8
+                            radius: 1
+                            color: Theme.primaryColor
+                            visible: useExplicitDuration
+                        }
+                    }
+
+                    Text {
+                        text: "Fixed"
+                        color: Theme.textColorDim
+                        font.pixelSize: 11
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    id: fixedMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (AnimController) {
+                            AnimController.useExplicitDuration = !useExplicitDuration
+                        }
+                    }
+                }
+
+                ToolTip.visible: fixedMouse.containsMouse
+                ToolTip.delay: 500
+                ToolTip.text: "Fixed: use set duration\nOff: duration from last keyframe"
+            }
+
+            Item { Layout.fillWidth: true }
+
+            // Current time display
+            Text {
+                text: formatTime(currentTime) + " / " + formatTime(totalDuration)
+                color: Theme.textColor
+                font.pixelSize: 11
+                font.family: "Consolas"
+            }
+
+            Text {
+                text: "Zoom: " + (Settings.timelineZoom * 100).toFixed(0) + "%"
+                color: Theme.textColorDim
+                font.pixelSize: 11
+            }
+        }
     }
 }

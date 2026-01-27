@@ -25,8 +25,6 @@ QVariant KeyframeModel::data(const QModelIndex& index, int role) const {
         case BearingRole: return kf.bearing;
         case TiltRole: return kf.tilt;
         case TimeRole: return kf.timeMs;
-        case InterpolationRole: return kf.interpolationModeInt;
-        case EasingRole: return kf.easingTypeInt;
         default: return QVariant();
     }
 }
@@ -77,20 +75,6 @@ bool KeyframeModel::setData(const QModelIndex& index, const QVariant& value, int
                 changed = true;
             }
             break;
-        case InterpolationRole:
-            if (kf.interpolationModeInt != value.toInt()) {
-                kf.interpolationModeInt = value.toInt();
-                kf.syncEnumsFromInts();
-                changed = true;
-            }
-            break;
-        case EasingRole:
-            if (kf.easingTypeInt != value.toInt()) {
-                kf.easingTypeInt = value.toInt();
-                kf.syncEnumsFromInts();
-                changed = true;
-            }
-            break;
     }
 
     if (changed) {
@@ -109,19 +93,15 @@ QHash<int, QByteArray> KeyframeModel::roleNames() const {
         {ZoomRole, "zoom"},
         {BearingRole, "bearing"},
         {TiltRole, "tilt"},
-        {TimeRole, "time"},
-        {InterpolationRole, "interpolation"},
-        {EasingRole, "easing"}
+        {TimeRole, "time"}
     };
 }
 
 void KeyframeModel::addKeyframe(double lat, double lon, double zoom, double bearing, double tilt) {
-    // Calculate time for new keyframe: last keyframe time + 4 seconds, or 0 for first
     double newTime = 0.0;
     if (!m_keyframes.isEmpty()) {
         newTime = m_keyframes.last().timeMs + DEFAULT_KEYFRAME_INTERVAL;
     }
-
     addKeyframeAtTime(lat, lon, zoom, bearing, tilt, newTime);
 }
 
@@ -134,36 +114,9 @@ void KeyframeModel::addKeyframeAtTime(double lat, double lon, double zoom, doubl
     kf.zoom = zoom;
     kf.bearing = bearing;
     kf.tilt = tilt;
-    // Snap to frame boundary and ensure non-negative
     kf.timeMs = snapToFrame(qMax(0.0, timeMs));
-    kf.syncEnumInts();
 
     m_keyframes.append(kf);
-
-    endInsertRows();
-    sortByTime();  // Sort after adding to maintain time order
-    emit countChanged();
-    emit totalDurationChanged();
-    emit dataModified();
-}
-
-void KeyframeModel::insertKeyframe(int index, const QVariantMap& data) {
-    if (index < 0 || index > m_keyframes.size()) return;
-
-    beginInsertRows(QModelIndex(), index, index);
-
-    Keyframe kf;
-    kf.latitude = data.value("latitude", 0.0).toDouble();
-    kf.longitude = data.value("longitude", 0.0).toDouble();
-    kf.zoom = data.value("zoom", 5.0).toDouble();
-    kf.bearing = data.value("bearing", 0.0).toDouble();
-    kf.tilt = data.value("tilt", 0.0).toDouble();
-    kf.timeMs = data.value("time", 0.0).toDouble();
-    kf.interpolationModeInt = data.value("interpolation", 1).toInt();
-    kf.easingTypeInt = data.value("easing", 1).toInt();
-    kf.syncEnumsFromInts();
-
-    m_keyframes.insert(index, kf);
 
     endInsertRows();
     sortByTime();
@@ -204,8 +157,7 @@ void KeyframeModel::duplicateKeyframe(int index) {
     if (index < 0 || index >= m_keyframes.size()) return;
 
     Keyframe copy = m_keyframes.at(index);
-    // Place duplicate 2 seconds after original
-    copy.timeMs += 2000.0;
+    copy.timeMs += 2000.0;  // 2 seconds after
 
     beginInsertRows(QModelIndex(), m_keyframes.size(), m_keyframes.size());
     m_keyframes.append(copy);
@@ -232,14 +184,6 @@ void KeyframeModel::updateKeyframe(int index, const QVariantMap& data) {
         sortByTime();
         emit totalDurationChanged();
     }
-    if (data.contains("interpolation")) {
-        kf.interpolationModeInt = data["interpolation"].toInt();
-        kf.syncEnumsFromInts();
-    }
-    if (data.contains("easing")) {
-        kf.easingTypeInt = data["easing"].toInt();
-        kf.syncEnumsFromInts();
-    }
 
     QModelIndex modelIndex = createIndex(index, 0);
     emit dataChanged(modelIndex, modelIndex);
@@ -258,9 +202,7 @@ QVariantMap KeyframeModel::getKeyframe(int index) const {
         {"zoom", kf.zoom},
         {"bearing", kf.bearing},
         {"tilt", kf.tilt},
-        {"time", kf.timeMs},
-        {"interpolation", kf.interpolationModeInt},
-        {"easing", kf.easingTypeInt}
+        {"time", kf.timeMs}
     };
 }
 
@@ -279,7 +221,6 @@ void KeyframeModel::clear() {
 void KeyframeModel::setKeyframeTime(int index, double timeMs) {
     if (index < 0 || index >= m_keyframes.size()) return;
 
-    // Snap to frame boundary and ensure non-negative
     timeMs = snapToFrame(qMax(0.0, timeMs));
 
     if (m_keyframes[index].timeMs != timeMs) {
@@ -293,17 +234,8 @@ void KeyframeModel::setKeyframeTime(int index, double timeMs) {
     }
 }
 
-void KeyframeModel::setKeyframeInterpolation(int index, int mode) {
-    setData(createIndex(index, 0), mode, InterpolationRole);
-}
-
-void KeyframeModel::setKeyframeEasing(int index, int easing) {
-    setData(createIndex(index, 0), easing, EasingRole);
-}
-
 double KeyframeModel::totalDuration() const {
     if (m_keyframes.isEmpty()) return 0;
-    // Total duration is the time of the last keyframe
     return m_keyframes.last().timeMs;
 }
 
@@ -314,9 +246,6 @@ void KeyframeModel::setCurrentIndex(int index) {
     if (m_currentIndex != index) {
         m_currentIndex = index;
         emit currentIndexChanged();
-
-        // When current index changes, also select this keyframe and emit signal to load position
-        selectKeyframe(index, false);
         emit keyframeSelected(index);
     }
 }
@@ -330,137 +259,27 @@ void KeyframeModel::setEditMode(bool enabled) {
 
 void KeyframeModel::updateCurrentPosition(double lat, double lon, double zoom, double bearing, double tilt) {
     if (!m_editMode) return;
+    if (m_currentIndex < 0 || m_currentIndex >= m_keyframes.size()) return;
 
-    // Determine which keyframes to update: all selected, or just current
-    QList<int> indicesToUpdate;
-    if (m_selectedIndices.size() > 1) {
-        // Multiple selection: update ALL selected keyframes with same position
-        indicesToUpdate = m_selectedIndices;
-    } else if (m_currentIndex >= 0 && m_currentIndex < m_keyframes.size()) {
-        // Single selection: update current keyframe only
-        indicesToUpdate.append(m_currentIndex);
+    Keyframe& kf = m_keyframes[m_currentIndex];
+    bool changed = false;
+
+    if (kf.latitude != lat) { kf.latitude = lat; changed = true; }
+    if (kf.longitude != lon) { kf.longitude = lon; changed = true; }
+    if (kf.zoom != zoom) { kf.zoom = zoom; changed = true; }
+    if (kf.bearing != bearing) { kf.bearing = bearing; changed = true; }
+    if (kf.tilt != tilt) { kf.tilt = tilt; changed = true; }
+
+    if (changed) {
+        QModelIndex modelIndex = createIndex(m_currentIndex, 0);
+        emit dataChanged(modelIndex, modelIndex);
+        emit keyframeModified(m_currentIndex);
     }
-
-    if (indicesToUpdate.isEmpty()) return;
-
-    bool anyChanged = false;
-    for (int idx : indicesToUpdate) {
-        if (idx < 0 || idx >= m_keyframes.size()) continue;
-
-        Keyframe& kf = m_keyframes[idx];
-        bool changed = false;
-
-        if (kf.latitude != lat) { kf.latitude = lat; changed = true; }
-        if (kf.longitude != lon) { kf.longitude = lon; changed = true; }
-        if (kf.zoom != zoom) { kf.zoom = zoom; changed = true; }
-        if (kf.bearing != bearing) { kf.bearing = bearing; changed = true; }
-        if (kf.tilt != tilt) { kf.tilt = tilt; changed = true; }
-
-        if (changed) {
-            QModelIndex modelIndex = createIndex(idx, 0);
-            emit dataChanged(modelIndex, modelIndex);
-            emit keyframeModified(idx);
-            anyChanged = true;
-        }
-    }
-
-    // Note: Don't emit dataModified here to avoid invalidating frame buffer during editing
-    Q_UNUSED(anyChanged);
-}
-
-void KeyframeModel::selectKeyframe(int index, bool addToSelection) {
-    if (index < 0 || index >= m_keyframes.size()) return;
-
-    if (!addToSelection) {
-        m_selectedIndices.clear();
-    }
-
-    if (!m_selectedIndices.contains(index)) {
-        m_selectedIndices.append(index);
-        std::sort(m_selectedIndices.begin(), m_selectedIndices.end());
-    }
-
-    emit selectedIndicesChanged();
-}
-
-void KeyframeModel::deselectKeyframe(int index) {
-    if (m_selectedIndices.removeOne(index)) {
-        emit selectedIndicesChanged();
-    }
-}
-
-void KeyframeModel::selectRange(int startIndex, int endIndex) {
-    if (startIndex > endIndex) std::swap(startIndex, endIndex);
-
-    startIndex = qMax(0, startIndex);
-    endIndex = qMin(m_keyframes.size() - 1, endIndex);
-
-    m_selectedIndices.clear();
-    for (int i = startIndex; i <= endIndex; i++) {
-        m_selectedIndices.append(i);
-    }
-
-    emit selectedIndicesChanged();
-}
-
-void KeyframeModel::selectAll() {
-    m_selectedIndices.clear();
-    for (int i = 0; i < m_keyframes.size(); i++) {
-        m_selectedIndices.append(i);
-    }
-    emit selectedIndicesChanged();
-}
-
-void KeyframeModel::clearSelection() {
-    if (!m_selectedIndices.isEmpty()) {
-        m_selectedIndices.clear();
-        emit selectedIndicesChanged();
-    }
-}
-
-bool KeyframeModel::isSelected(int index) const {
-    return m_selectedIndices.contains(index);
-}
-
-void KeyframeModel::moveSelectedKeyframes(double deltaTimeMs) {
-    if (m_selectedIndices.isEmpty()) return;
-
-    // Calculate minimum time to ensure no keyframe goes negative
-    double minTime = 0;
-    for (int idx : m_selectedIndices) {
-        if (idx >= 0 && idx < m_keyframes.size()) {
-            minTime = qMin(minTime, m_keyframes[idx].timeMs + deltaTimeMs);
-        }
-    }
-
-    // Clamp delta if it would make any keyframe negative
-    if (minTime < 0) {
-        deltaTimeMs -= minTime;
-    }
-
-    // Apply delta to all selected keyframes, snapping to frame boundaries
-    for (int idx : m_selectedIndices) {
-        if (idx >= 0 && idx < m_keyframes.size()) {
-            m_keyframes[idx].timeMs = snapToFrame(m_keyframes[idx].timeMs + deltaTimeMs);
-        }
-    }
-
-    sortByTime();
-    emit totalDurationChanged();
-    emit dataModified();
-}
-
-void KeyframeModel::updateSelectionAfterSort() {
-    // After sorting, indices may have changed
-    // For now, clear selection - a more sophisticated approach would track keyframes by ID
-    // m_selectedIndices.clear();
-    // emit selectedIndicesChanged();
 }
 
 int KeyframeModel::keyframeIndexAtTime(double timeMs) const {
     if (m_keyframes.isEmpty()) return -1;
 
-    // Find the keyframe we're transitioning FROM (the one before or at current time)
     for (int i = m_keyframes.size() - 1; i >= 0; i--) {
         if (timeMs >= m_keyframes[i].timeMs) {
             return i;
@@ -481,10 +300,8 @@ double KeyframeModel::progressAtTime(double timeMs, int& outFromIndex, int& outT
         return 0.0;
     }
 
-    // Find which two keyframes we're between
     outFromIndex = keyframeIndexAtTime(timeMs);
 
-    // If we're at or past the last keyframe, we're done
     if (outFromIndex >= m_keyframes.size() - 1) {
         outFromIndex = m_keyframes.size() - 1;
         outToIndex = outFromIndex;
@@ -503,18 +320,6 @@ double KeyframeModel::progressAtTime(double timeMs, int& outFromIndex, int& outT
     return qBound(0.0, progress, 1.0);
 }
 
-void KeyframeModel::sortByTime() {
-    // Sort keyframes by their time position
-    std::sort(m_keyframes.begin(), m_keyframes.end(), [](const Keyframe& a, const Keyframe& b) {
-        return a.timeMs < b.timeMs;
-    });
-
-    // Notify that data may have changed
-    if (!m_keyframes.isEmpty()) {
-        emit dataChanged(createIndex(0, 0), createIndex(m_keyframes.size() - 1, 0));
-    }
-}
-
 int KeyframeModel::keyframeNearTime(double timeMs, double toleranceMs) const {
     for (int i = 0; i < m_keyframes.size(); i++) {
         if (qAbs(m_keyframes[i].timeMs - timeMs) <= toleranceMs) {
@@ -524,14 +329,20 @@ int KeyframeModel::keyframeNearTime(double timeMs, double toleranceMs) const {
     return -1;
 }
 
-bool KeyframeModel::hasKeyframeNearTime(double timeMs, double toleranceMs) const {
-    return keyframeNearTime(timeMs, toleranceMs) >= 0;
-}
-
 double KeyframeModel::snapToFrame(double timeMs, int fps) {
     if (fps <= 0) fps = 30;
     double frameMs = 1000.0 / fps;
     return qRound(timeMs / frameMs) * frameMs;
+}
+
+void KeyframeModel::sortByTime() {
+    std::sort(m_keyframes.begin(), m_keyframes.end(), [](const Keyframe& a, const Keyframe& b) {
+        return a.timeMs < b.timeMs;
+    });
+
+    if (!m_keyframes.isEmpty()) {
+        emit dataChanged(createIndex(0, 0), createIndex(m_keyframes.size() - 1, 0));
+    }
 }
 
 void KeyframeModel::goToNextKeyframe() {
@@ -539,7 +350,7 @@ void KeyframeModel::goToNextKeyframe() {
 
     int nextIndex = m_currentIndex + 1;
     if (nextIndex >= m_keyframes.size()) {
-        nextIndex = m_keyframes.size() - 1;  // Stay at last
+        nextIndex = m_keyframes.size() - 1;
     }
 
     if (nextIndex != m_currentIndex) {
@@ -552,12 +363,76 @@ void KeyframeModel::goToPreviousKeyframe() {
 
     int prevIndex = m_currentIndex - 1;
     if (prevIndex < 0) {
-        prevIndex = 0;  // Stay at first
+        prevIndex = 0;
     }
 
     if (prevIndex != m_currentIndex) {
         setCurrentIndex(prevIndex);
     }
+}
+
+// Multi-selection methods
+bool KeyframeModel::isSelected(int index) const {
+    return m_selectedIndices.contains(index);
+}
+
+void KeyframeModel::selectKeyframe(int index, bool addToSelection) {
+    if (index < 0 || index >= m_keyframes.size()) return;
+
+    if (!addToSelection) {
+        m_selectedIndices.clear();
+    }
+    m_selectedIndices.insert(index);
+    emit selectionChanged();
+}
+
+void KeyframeModel::deselectKeyframe(int index) {
+    if (m_selectedIndices.remove(index)) {
+        emit selectionChanged();
+    }
+}
+
+void KeyframeModel::selectRange(int firstIndex, int lastIndex) {
+    if (firstIndex > lastIndex) std::swap(firstIndex, lastIndex);
+    firstIndex = qMax(0, firstIndex);
+    lastIndex = qMin(m_keyframes.size() - 1, lastIndex);
+
+    m_selectedIndices.clear();
+    for (int i = firstIndex; i <= lastIndex; i++) {
+        m_selectedIndices.insert(i);
+    }
+    emit selectionChanged();
+}
+
+void KeyframeModel::clearSelection() {
+    if (!m_selectedIndices.isEmpty()) {
+        m_selectedIndices.clear();
+        emit selectionChanged();
+    }
+}
+
+void KeyframeModel::moveSelectedKeyframes(double deltaTimeMs) {
+    if (m_selectedIndices.isEmpty()) return;
+
+    // Move all selected keyframes by delta
+    for (int index : m_selectedIndices) {
+        if (index >= 0 && index < m_keyframes.size()) {
+            double newTime = qMax(0.0, m_keyframes[index].timeMs + deltaTimeMs);
+            m_keyframes[index].timeMs = snapToFrame(newTime);
+        }
+    }
+
+    sortByTime();
+    emit totalDurationChanged();
+    emit dataModified();
+}
+
+QVariantList KeyframeModel::selectedIndices() const {
+    QVariantList list;
+    for (int index : m_selectedIndices) {
+        list.append(index);
+    }
+    return list;
 }
 
 QJsonArray KeyframeModel::toJson() const {

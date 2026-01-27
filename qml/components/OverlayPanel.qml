@@ -60,6 +60,36 @@ Rectangle {
             color: Theme.borderColor
         }
 
+        // Geographic overlay buttons
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingSmall
+
+            Button {
+                text: qsTr("Country")
+                Layout.fillWidth: true
+                onClicked: countryPicker.open()
+            }
+
+            Button {
+                text: qsTr("Region")
+                Layout.fillWidth: true
+                onClicked: regionPickerGeo.open()
+            }
+
+            Button {
+                text: qsTr("City")
+                Layout.fillWidth: true
+                onClicked: cityPicker.open()
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            height: 1
+            color: Theme.borderColor
+        }
+
         // Overlay list
         ListView {
             id: overlayList
@@ -367,6 +397,200 @@ Rectangle {
             let highlight = Overlays.createRegionHighlight(code)
             if (highlight) highlight.regionName = name
         }
+    }
+
+    // Country picker dialog
+    Dialog {
+        id: countryPicker
+        title: qsTr("Select Country")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 400
+        height: 500
+
+        property var allCountries: []
+
+        onOpened: {
+            countrySearch.text = ""
+            allCountries = GeoJson ? GeoJson.countryList() : []
+            countryListView.model = allCountries
+            countrySearch.forceActiveFocus()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingSmall
+
+            TextField {
+                id: countrySearch
+                Layout.fillWidth: true
+                placeholderText: qsTr("Search countries...")
+                onTextChanged: {
+                    if (!text) {
+                        countryListView.model = countryPicker.allCountries
+                    } else {
+                        let lower = text.toLowerCase()
+                        countryListView.model = countryPicker.allCountries.filter(c =>
+                            c.name.toLowerCase().includes(lower)
+                        )
+                    }
+                }
+            }
+
+            ListView {
+                id: countryListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                delegate: ItemDelegate {
+                    width: countryListView.width
+                    text: modelData.name
+                    onClicked: {
+                        let startTime = AnimController ? AnimController.currentTime : 0
+                        GeoOverlays.addCountry(modelData.code, modelData.name, startTime)
+                        countryPicker.close()
+                    }
+                }
+            }
+        }
+
+        standardButtons: Dialog.Cancel
+    }
+
+    // Region picker dialog
+    Dialog {
+        id: regionPickerGeo
+        title: qsTr("Select Region/State")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 400
+        height: 500
+
+        property var allRegions: []
+        property string selectedCountryName: ""
+
+        onOpened: {
+            regionSearchGeo.text = ""
+            countrySelector.currentIndex = -1
+            allRegions = []
+            regionListView.model = []
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingSmall
+
+            ComboBox {
+                id: countrySelector
+                Layout.fillWidth: true
+                model: GeoJson ? GeoJson.countryList() : []
+                textRole: "name"
+                displayText: currentIndex >= 0 ? model[currentIndex].name : qsTr("Select country first...")
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0 && model[currentIndex]) {
+                        regionPickerGeo.selectedCountryName = model[currentIndex].name
+                        regionPickerGeo.allRegions = GeoJson.regionsForCountry(model[currentIndex].name)
+                        regionListView.model = regionPickerGeo.allRegions
+                        regionSearchGeo.text = ""
+                    }
+                }
+            }
+
+            TextField {
+                id: regionSearchGeo
+                Layout.fillWidth: true
+                placeholderText: qsTr("Search regions...")
+                onTextChanged: {
+                    if (!text) {
+                        regionListView.model = regionPickerGeo.allRegions
+                    } else {
+                        let lower = text.toLowerCase()
+                        regionListView.model = regionPickerGeo.allRegions.filter(r =>
+                            r.name.toLowerCase().includes(lower)
+                        )
+                    }
+                }
+            }
+
+            ListView {
+                id: regionListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                delegate: ItemDelegate {
+                    width: regionListView.width
+                    text: modelData.name
+                    onClicked: {
+                        let startTime = AnimController ? AnimController.currentTime : 0
+                        GeoOverlays.addRegion(modelData.code, modelData.name, regionPickerGeo.selectedCountryName, startTime)
+                        regionPickerGeo.close()
+                    }
+                }
+            }
+        }
+
+        standardButtons: Dialog.Cancel
+    }
+
+    // City picker dialog
+    Dialog {
+        id: cityPicker
+        title: qsTr("Select City")
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 400
+        height: 500
+
+        property var allCities: []
+
+        onOpened: {
+            citySearch.text = ""
+            allCities = GeoJson ? GeoJson.allCities() : []
+            cityListView.model = allCities.slice(0, 200)
+            citySearch.forceActiveFocus()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Theme.spacingSmall
+
+            TextField {
+                id: citySearch
+                Layout.fillWidth: true
+                placeholderText: qsTr("Search cities...")
+                onTextChanged: {
+                    if (!text) {
+                        cityListView.model = cityPicker.allCities.slice(0, 200)
+                    } else {
+                        let lower = text.toLowerCase()
+                        cityListView.model = cityPicker.allCities.filter(c =>
+                            c.name.toLowerCase().includes(lower)
+                        ).slice(0, 200)
+                    }
+                }
+            }
+
+            ListView {
+                id: cityListView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                delegate: ItemDelegate {
+                    width: cityListView.width
+                    text: modelData.name + (modelData.countryName ? " (" + modelData.countryName + ")" : "")
+                    onClicked: {
+                        let startTime = AnimController ? AnimController.currentTime : 0
+                        GeoOverlays.addCity(modelData.name, modelData.countryName, modelData.lat, modelData.lon, startTime)
+                        cityPicker.close()
+                    }
+                }
+            }
+        }
+
+        standardButtons: Dialog.Cancel
     }
 
     function getTypeIcon(type) {

@@ -3,6 +3,9 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QIcon>
+#include <QSurfaceFormat>
+#include <QQuick3D>
+#include <QQuickWindow>
 
 #include "version.h"
 #include "core/settings.h"
@@ -20,6 +23,9 @@
 #include "overlays/overlaymanager.h"
 #include "export/videoexporter.h"
 #include "controllers/maincontroller.h"
+#include "3d/globegeometry.h"
+#include "3d/countrygeometry.h"
+#include "3d/globecamera.h"
 
 int main(int argc, char *argv[])
 {
@@ -57,6 +63,9 @@ int main(int argc, char *argv[])
 
     // Register QML types
     qmlRegisterType<MapRenderer>("TristansKortAnimator", 1, 0, "MapRenderer");
+    qmlRegisterType<GlobeGeometry>("TristansKortAnimator", 1, 0, "GlobeGeometry");
+    qmlRegisterType<CountryGeometry>("TristansKortAnimator", 1, 0, "CountryGeometry");
+    qmlRegisterType<GlobeCamera>("TristansKortAnimator", 1, 0, "GlobeCamera");
     qmlRegisterUncreatableType<MapCamera>("TristansKortAnimator", 1, 0, "MapCameraType",
         "MapCamera is created in C++");
     qmlRegisterUncreatableType<KeyframeModel>("TristansKortAnimator", 1, 0, "KeyframeModelType",

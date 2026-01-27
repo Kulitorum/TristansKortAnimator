@@ -12,8 +12,11 @@
 #include <QPainter>
 #include <QtMath>
 #include <QTransform>
+#include <cmath>
 #include <QMetaObject>
 #include <QSet>
+#include <QFile>
+#include <QTextStream>
 
 MapRenderer::MapRenderer(QQuickItem* parent)
     : QQuickPaintedItem(parent)
@@ -342,45 +345,49 @@ void MapRenderer::renderGeoOverlays(QPainter* painter, double currentTime, doubl
     double viewH = height();
     if (viewW <= 0 || viewH <= 0) return;
 
-    // Get all visible overlays at current time with their calculated opacities
-    auto visibleOverlays = m_geoOverlays->visibleOverlaysAtTime(currentTime, totalDuration);
+    // Get all overlays and render visible ones
+    const auto& allOverlays = m_geoOverlays->overlays();
 
-    for (const auto& overlayPair : visibleOverlays) {
-        const GeoOverlay* overlay = overlayPair.first;
-        double opacity = overlayPair.second;
+    for (const auto& overlay : allOverlays) {
+        // Calculate opacity based on timing (fade in/out)
+        double opacity = overlay.opacityAtTime(currentTime, totalDuration);
 
+        // Skip invisible overlays
         if (opacity <= 0.0) continue;
 
         // Apply opacity to colors
-        QColor fillColor = overlay->fillColor;
+        QColor fillColor = overlay.fillColor;
         fillColor.setAlphaF(fillColor.alphaF() * opacity);
 
-        QColor borderColor = overlay->borderColor;
+        QColor borderColor = overlay.borderColor;
         borderColor.setAlphaF(borderColor.alphaF() * opacity);
 
-        if (overlay->type == GeoOverlayType::City) {
+        if (overlay.type == GeoOverlayType::City) {
             // Render city as a marker circle
-            QPointF screenPoint = m_camera->geoToScreen(overlay->latitude, overlay->longitude, viewW, viewH);
+            QPointF screenPoint = m_camera->geoToScreen(overlay.latitude, overlay.longitude, viewW, viewH);
 
             // Check if on screen
             if (screenPoint.x() >= -50 && screenPoint.x() <= viewW + 50 &&
                 screenPoint.y() >= -50 && screenPoint.y() <= viewH + 50) {
 
-                double radius = overlay->markerRadius;
+                double radius = overlay.markerRadius;
 
-                // Draw outer circle (border)
-                if (borderColor.alpha() > 0) {
-                    painter->setPen(QPen(borderColor, 2));
+                // Draw circle - border only if fill is transparent
+                if (fillColor.alpha() > 0) {
                     painter->setBrush(fillColor);
-                    painter->drawEllipse(screenPoint, radius, radius);
                 } else {
-                    painter->setPen(Qt::NoPen);
-                    painter->setBrush(fillColor);
-                    painter->drawEllipse(screenPoint, radius, radius);
+                    painter->setBrush(Qt::NoBrush);
                 }
 
+                if (borderColor.alpha() > 0) {
+                    painter->setPen(QPen(borderColor, 3));  // Thicker border for visibility
+                } else {
+                    painter->setPen(Qt::NoPen);
+                }
+                painter->drawEllipse(screenPoint, radius, radius);
+
                 // Draw label if enabled
-                if (overlay->showLabel) {
+                if (overlay.showLabel) {
                     QColor textColor = Qt::white;
                     textColor.setAlphaF(opacity);
 
@@ -393,15 +400,20 @@ void MapRenderer::renderGeoOverlays(QPainter* painter, double currentTime, doubl
                     // Draw text with shadow for readability
                     QColor shadowColor(0, 0, 0, static_cast<int>(180 * opacity));
                     painter->setPen(shadowColor);
-                    painter->drawText(QPointF(screenPoint.x() + radius + 5 + 1, screenPoint.y() + 4 + 1), overlay->name);
+                    painter->drawText(QPointF(screenPoint.x() + radius + 5 + 1, screenPoint.y() + 4 + 1), overlay.name);
 
                     painter->setPen(textColor);
-                    painter->drawText(QPointF(screenPoint.x() + radius + 5, screenPoint.y() + 4), overlay->name);
+                    painter->drawText(QPointF(screenPoint.x() + radius + 5, screenPoint.y() + 4), overlay.name);
                 }
             }
         } else {
             // Render country/region polygons
-            for (const QPolygonF& geoPoly : overlay->polygons) {
+            // Debug: log polygon count
+            if (overlay.polygons.isEmpty()) {
+                qWarning() << "WARNING: No polygons for" << overlay.name << "code=" << overlay.code;
+            }
+
+            for (const QPolygonF& geoPoly : overlay.polygons) {
                 QPolygonF screenPoly;
                 screenPoly.reserve(geoPoly.size());
 
@@ -419,12 +431,10 @@ void MapRenderer::renderGeoOverlays(QPainter* painter, double currentTime, doubl
                         painter->drawPolygon(screenPoly);
                     }
 
-                    // Draw border
-                    if (borderColor.alpha() > 0 && overlay->borderWidth > 0) {
-                        painter->setPen(QPen(borderColor, overlay->borderWidth));
-                        painter->setBrush(Qt::NoBrush);
-                        painter->drawPolygon(screenPoly);
-                    }
+                    // Draw border - ALWAYS draw for debugging
+                    painter->setPen(QPen(borderColor, overlay.borderWidth > 0 ? overlay.borderWidth : 3.0));
+                    painter->setBrush(Qt::NoBrush);
+                    painter->drawPolygon(screenPoly);
                 }
             }
         }
@@ -1004,4 +1014,85 @@ void MapRenderer::toggleFeatureHighlight(const QString& code, const QColor& fill
     } else {
         highlightRegion(code, fillColor, borderColor);
     }
+}
+
+void MapRenderer::frameSelectedFeature() {
+    if (!m_camera || !m_geojson || m_selectedFeatureName.isEmpty()) {
+        return;
+    }
+
+    // Find the feature
+    const GeoFeature* feature = nullptr;
+    if (!m_selectedFeatureCode.isEmpty()) {
+        feature = m_geojson->findByCode(m_selectedFeatureCode);
+    }
+    if (!feature) {
+        feature = m_geojson->findByName(m_selectedFeatureName);
+    }
+    if (!feature) {
+        return;
+    }
+
+    // For cities, just center on the point with a reasonable zoom
+    if (m_selectedFeatureType == "city") {
+        m_camera->setPosition(feature->centroid.y(), feature->centroid.x(), 10.0,
+                              m_camera->bearing(), m_camera->tilt());
+        return;
+    }
+
+    // For countries/regions, calculate bounding box from polygons
+    if (feature->polygons.isEmpty()) {
+        // Fall back to centroid
+        m_camera->setPosition(feature->centroid.y(), feature->centroid.x(), 6.0,
+                              m_camera->bearing(), m_camera->tilt());
+        return;
+    }
+
+    // Calculate bounding box (polygons store lat in x, lon in y)
+    double minLat = 90.0, maxLat = -90.0;
+    double minLon = 180.0, maxLon = -180.0;
+
+    for (const auto& polygon : feature->polygons) {
+        for (const auto& point : polygon) {
+            // point.x() = lat, point.y() = lon (based on coordinate system used)
+            double lat = point.x();
+            double lon = point.y();
+            minLat = qMin(minLat, lat);
+            maxLat = qMax(maxLat, lat);
+            minLon = qMin(minLon, lon);
+            maxLon = qMax(maxLon, lon);
+        }
+    }
+
+    // Calculate center
+    double centerLat = (minLat + maxLat) / 2.0;
+    double centerLon = (minLon + maxLon) / 2.0;
+
+    // Calculate zoom level to fit the bounding box
+    double latSpan = maxLat - minLat;
+    double lonSpan = maxLon - minLon;
+
+    // Use viewport dimensions to calculate required zoom
+    double viewWidth = width();
+    double viewHeight = height();
+    if (viewWidth <= 0) viewWidth = 800;
+    if (viewHeight <= 0) viewHeight = 600;
+
+    // Calculate zoom based on the larger span (with some padding)
+    double latZoom = std::log2(180.0 / (latSpan * 1.2)) + 1;
+    double lonZoom = std::log2(360.0 / (lonSpan * 1.2)) + 1;
+
+    // Adjust for viewport aspect ratio
+    double aspectRatio = viewWidth / viewHeight;
+    if (aspectRatio > 1.0) {
+        latZoom -= std::log2(aspectRatio) * 0.5;
+    } else {
+        lonZoom += std::log2(aspectRatio) * 0.5;
+    }
+
+    double zoom = qMin(latZoom, lonZoom);
+    zoom = qBound(1.0, zoom, 18.0);
+
+    m_camera->setPosition(centerLat, centerLon, zoom,
+                          m_camera->bearing(), m_camera->tilt());
 }

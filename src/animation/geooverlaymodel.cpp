@@ -2,6 +2,9 @@
 #include "../map/geojsonparser.h"
 #include <QJsonArray>
 #include <QUuid>
+#include <QFile>
+#include <QTextStream>
+#include <algorithm>
 
 GeoOverlayModel::GeoOverlayModel(QObject* parent)
     : QAbstractListModel(parent)
@@ -37,6 +40,38 @@ QVariant GeoOverlayModel::data(const QModelIndex& index, int role) const {
         case FadeInDurationRole: return overlay.fadeInDuration;
         case EndTimeRole: return overlay.endTime;
         case FadeOutDurationRole: return overlay.fadeOutDuration;
+        case KeyframeCountRole: return overlay.keyframes.size();
+        case CurrentExtrusionRole: {
+            OverlayKeyframe props = overlay.propertiesAtTime(m_currentTime);
+            return props.extrusion;
+        }
+        case CurrentFillColorRole: {
+            OverlayKeyframe props = overlay.propertiesAtTime(m_currentTime);
+            return props.fillColor;
+        }
+        case CurrentBorderColorRole: {
+            OverlayKeyframe props = overlay.propertiesAtTime(m_currentTime);
+            return props.borderColor;
+        }
+        case CurrentOpacityRole: {
+            OverlayKeyframe props = overlay.propertiesAtTime(m_currentTime);
+            return props.opacity;
+        }
+        case CurrentScaleRole: {
+            OverlayKeyframe props = overlay.propertiesAtTime(m_currentTime);
+            return props.scale;
+        }
+        case PolygonsRole: {
+            QVariantList polygonList;
+            for (const auto& polygon : overlay.polygons) {
+                QVariantList points;
+                for (const auto& pt : polygon) {
+                    points.append(QVariantMap{{"x", pt.x()}, {"y", pt.y()}});
+                }
+                polygonList.append(QVariant(points));
+            }
+            return polygonList;
+        }
         default: return QVariant();
     }
 }
@@ -132,7 +167,14 @@ QHash<int, QByteArray> GeoOverlayModel::roleNames() const {
         {StartTimeRole, "startTime"},
         {FadeInDurationRole, "fadeInDuration"},
         {EndTimeRole, "endTime"},
-        {FadeOutDurationRole, "fadeOutDuration"}
+        {FadeOutDurationRole, "fadeOutDuration"},
+        {KeyframeCountRole, "keyframeCount"},
+        {CurrentExtrusionRole, "currentExtrusion"},
+        {CurrentFillColorRole, "currentFillColor"},
+        {CurrentBorderColorRole, "currentBorderColor"},
+        {CurrentOpacityRole, "currentOpacity"},
+        {CurrentScaleRole, "currentScale"},
+        {PolygonsRole, "polygons"}
     };
 }
 
@@ -149,7 +191,10 @@ QString GeoOverlayModel::generateId(GeoOverlayType type, const QString& name) {
 }
 
 void GeoOverlayModel::loadGeometryForOverlay(GeoOverlay& overlay) {
-    if (!m_geoJson) return;
+    if (!m_geoJson) {
+        qWarning() << "GeoOverlayModel::loadGeometryForOverlay: m_geoJson is null!";
+        return;
+    }
 
     if (overlay.type == GeoOverlayType::City) {
         // Cities are points - geometry already set from lat/lon
@@ -157,6 +202,9 @@ void GeoOverlayModel::loadGeometryForOverlay(GeoOverlay& overlay) {
     } else {
         // Countries and regions - load polygons from GeoJSON
         overlay.polygons = m_geoJson->getPolygonsForFeature(overlay.code, overlay.name);
+        if (overlay.polygons.isEmpty()) {
+            qWarning() << "GeoOverlayModel: No polygons found for" << overlay.name << "code=" << overlay.code;
+        }
     }
 }
 
@@ -169,11 +217,14 @@ void GeoOverlayModel::addCountry(const QString& code, const QString& name, doubl
     overlay.name = name;
     overlay.type = GeoOverlayType::Country;
     overlay.startTime = startTime;
+    overlay.endTime = startTime + 10000.0;  // Default 10 second duration from start
+    overlay.fadeInDuration = 500.0;   // Default 0.5s fade in
+    overlay.fadeOutDuration = 500.0;  // Default 0.5s fade out
 
-    // Default country colors
-    overlay.fillColor = QColor(255, 100, 100, 128);
-    overlay.borderColor = QColor(255, 50, 50, 255);
-    overlay.borderWidth = 2.0;
+    // Default country colors - border only (no fill)
+    overlay.fillColor = QColor(0, 0, 0, 0);  // Transparent fill
+    overlay.borderColor = QColor(255, 255, 255, 255);  // White border
+    overlay.borderWidth = 3.0;
 
     loadGeometryForOverlay(overlay);
     m_overlays.append(overlay);
@@ -194,11 +245,14 @@ void GeoOverlayModel::addRegion(const QString& code, const QString& name,
     overlay.parentName = countryName;
     overlay.type = GeoOverlayType::Region;
     overlay.startTime = startTime;
+    overlay.endTime = startTime + 10000.0;  // Default 10 second duration from start
+    overlay.fadeInDuration = 500.0;   // Default 0.5s fade in
+    overlay.fadeOutDuration = 500.0;  // Default 0.5s fade out
 
-    // Default region colors
-    overlay.fillColor = QColor(100, 100, 255, 128);
-    overlay.borderColor = QColor(50, 50, 255, 255);
-    overlay.borderWidth = 1.5;
+    // Default region colors - border only (no fill)
+    overlay.fillColor = QColor(0, 0, 0, 0);  // Transparent fill
+    overlay.borderColor = QColor(255, 255, 255, 255);  // White border
+    overlay.borderWidth = 2.5;
 
     loadGeometryForOverlay(overlay);
     m_overlays.append(overlay);
@@ -221,10 +275,13 @@ void GeoOverlayModel::addCity(const QString& name, const QString& countryName,
     overlay.longitude = lon;
     overlay.point = QPointF(lon, lat);
     overlay.startTime = startTime;
+    overlay.endTime = startTime + 10000.0;  // Default 10 second duration from start
+    overlay.fadeInDuration = 300.0;   // Default 0.3s fade in (faster for cities)
+    overlay.fadeOutDuration = 300.0;  // Default 0.3s fade out
 
-    // Default city colors
-    overlay.fillColor = QColor(255, 200, 0, 200);
-    overlay.borderColor = QColor(200, 150, 0, 255);
+    // Default city colors - ring style (no fill)
+    overlay.fillColor = QColor(0, 0, 0, 0);  // Transparent fill
+    overlay.borderColor = QColor(255, 255, 255, 255);  // White border
     overlay.markerRadius = 8.0;
     overlay.showLabel = true;
 
@@ -386,4 +443,184 @@ void GeoOverlayModel::fromJson(const QJsonArray& array) {
 
     endResetModel();
     emit countChanged();
+}
+
+// Keyframe management
+void GeoOverlayModel::sortKeyframes(int overlayIndex) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& keyframes = m_overlays[overlayIndex].keyframes;
+    std::sort(keyframes.begin(), keyframes.end(),
+              [](const OverlayKeyframe& a, const OverlayKeyframe& b) {
+                  return a.timeMs < b.timeMs;
+              });
+}
+
+int GeoOverlayModel::addKeyframe(int overlayIndex, double timeMs) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return -1;
+
+    GeoOverlay& overlay = m_overlays[overlayIndex];
+
+    // Create new keyframe with default or interpolated values
+    OverlayKeyframe kf;
+    if (overlay.keyframes.isEmpty()) {
+        // First keyframe - use overlay's current appearance
+        kf.timeMs = timeMs;
+        kf.extrusion = 0.0;
+        kf.fillColor = overlay.fillColor;
+        kf.borderColor = overlay.borderColor;
+        kf.opacity = 1.0;
+        kf.scale = 1.0;
+    } else {
+        // Get interpolated values at this time
+        kf = overlay.propertiesAtTime(timeMs);
+        kf.timeMs = timeMs;
+    }
+
+    overlay.keyframes.append(kf);
+    sortKeyframes(overlayIndex);
+
+    // Find the index of the newly added keyframe
+    int kfIndex = 0;
+    for (int i = 0; i < overlay.keyframes.size(); ++i) {
+        if (qAbs(overlay.keyframes[i].timeMs - timeMs) < 0.01) {
+            kfIndex = i;
+            break;
+        }
+    }
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit keyframeAdded(overlayIndex, kfIndex);
+    emit dataModified();
+
+    return kfIndex;
+}
+
+void GeoOverlayModel::updateKeyframe(int overlayIndex, int keyframeIndex, const QVariantMap& data) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& keyframes = m_overlays[overlayIndex].keyframes;
+    if (keyframeIndex < 0 || keyframeIndex >= keyframes.size()) return;
+
+    OverlayKeyframe& kf = keyframes[keyframeIndex];
+
+    if (data.contains("timeMs")) kf.timeMs = data["timeMs"].toDouble();
+    if (data.contains("extrusion")) kf.extrusion = data["extrusion"].toDouble();
+    if (data.contains("fillColor")) kf.fillColor = data["fillColor"].value<QColor>();
+    if (data.contains("borderColor")) kf.borderColor = data["borderColor"].value<QColor>();
+    if (data.contains("opacity")) kf.opacity = data["opacity"].toDouble();
+    if (data.contains("scale")) kf.scale = data["scale"].toDouble();
+    if (data.contains("easingType")) {
+        kf.easingTypeInt = data["easingType"].toInt();
+        kf.syncEnumFromInt();
+    }
+
+    // Re-sort if time changed
+    if (data.contains("timeMs")) {
+        sortKeyframes(overlayIndex);
+    }
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit keyframeModified(overlayIndex, keyframeIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::removeKeyframe(int overlayIndex, int keyframeIndex) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& keyframes = m_overlays[overlayIndex].keyframes;
+    if (keyframeIndex < 0 || keyframeIndex >= keyframes.size()) return;
+
+    keyframes.remove(keyframeIndex);
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit keyframeRemoved(overlayIndex, keyframeIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::moveKeyframe(int overlayIndex, int keyframeIndex, double newTimeMs) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& keyframes = m_overlays[overlayIndex].keyframes;
+    if (keyframeIndex < 0 || keyframeIndex >= keyframes.size()) return;
+
+    keyframes[keyframeIndex].timeMs = newTimeMs;
+    sortKeyframes(overlayIndex);
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit keyframeModified(overlayIndex, keyframeIndex);
+    emit dataModified();
+}
+
+QVariantMap GeoOverlayModel::getKeyframe(int overlayIndex, int keyframeIndex) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return {};
+
+    const auto& keyframes = m_overlays[overlayIndex].keyframes;
+    if (keyframeIndex < 0 || keyframeIndex >= keyframes.size()) return {};
+
+    const OverlayKeyframe& kf = keyframes[keyframeIndex];
+    return {
+        {"timeMs", kf.timeMs},
+        {"extrusion", kf.extrusion},
+        {"fillColor", kf.fillColor},
+        {"borderColor", kf.borderColor},
+        {"opacity", kf.opacity},
+        {"scale", kf.scale},
+        {"easingType", kf.easingTypeInt}
+    };
+}
+
+int GeoOverlayModel::keyframeCount(int overlayIndex) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return 0;
+    return m_overlays[overlayIndex].keyframes.size();
+}
+
+QVariantList GeoOverlayModel::getAllKeyframes(int overlayIndex) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return {};
+
+    QVariantList result;
+    for (const auto& kf : m_overlays[overlayIndex].keyframes) {
+        result.append(QVariantMap{
+            {"timeMs", kf.timeMs},
+            {"extrusion", kf.extrusion},
+            {"fillColor", kf.fillColor},
+            {"borderColor", kf.borderColor},
+            {"opacity", kf.opacity},
+            {"scale", kf.scale},
+            {"easingType", kf.easingTypeInt}
+        });
+    }
+    return result;
+}
+
+QVariantMap GeoOverlayModel::propertiesAtTime(int overlayIndex, double timeMs) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return {};
+
+    OverlayKeyframe kf = m_overlays[overlayIndex].propertiesAtTime(timeMs);
+    return {
+        {"timeMs", kf.timeMs},
+        {"extrusion", kf.extrusion},
+        {"fillColor", kf.fillColor},
+        {"borderColor", kf.borderColor},
+        {"opacity", kf.opacity},
+        {"scale", kf.scale}
+    };
+}
+
+void GeoOverlayModel::setCurrentTime(double timeMs) {
+    if (qAbs(m_currentTime - timeMs) < 0.01) return;
+
+    m_currentTime = timeMs;
+
+    // Notify that animated properties may have changed
+    if (!m_overlays.isEmpty()) {
+        emit dataChanged(createIndex(0, 0), createIndex(m_overlays.size() - 1, 0),
+                         {CurrentExtrusionRole, CurrentFillColorRole,
+                          CurrentBorderColorRole, CurrentOpacityRole, CurrentScaleRole});
+    }
+    emit currentTimeChanged();
 }

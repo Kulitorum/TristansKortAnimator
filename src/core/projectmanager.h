@@ -6,6 +6,9 @@
 
 class KeyframeModel;
 class OverlayManager;
+class GeoOverlayModel;
+class AnimationController;
+class Settings;
 
 class ProjectManager : public QObject {
     Q_OBJECT
@@ -17,6 +20,10 @@ class ProjectManager : public QObject {
 public:
     explicit ProjectManager(KeyframeModel* keyframes, OverlayManager* overlays, QObject* parent = nullptr);
 
+    void setGeoOverlayModel(GeoOverlayModel* geoOverlays) { m_geoOverlays = geoOverlays; }
+    void setAnimationController(AnimationController* anim) { m_animation = anim; }
+    void setSettings(Settings* settings) { m_settings = settings; }
+
     QString projectPath() const { return m_projectPath; }
     QString projectName() const;
     bool hasUnsavedChanges() const { return m_hasUnsavedChanges; }
@@ -25,6 +32,9 @@ public:
     Q_INVOKABLE bool openProject(const QUrl& path);
     Q_INVOKABLE bool saveProject();
     Q_INVOKABLE bool saveProjectAs(const QUrl& path);
+
+    // Auto-load last project on startup
+    Q_INVOKABLE bool loadLastProject();
 
 public slots:
     void markModified();
@@ -46,4 +56,7 @@ private:
     bool m_hasUnsavedChanges = false;
     KeyframeModel* m_keyframes;
     OverlayManager* m_overlays;
+    GeoOverlayModel* m_geoOverlays = nullptr;
+    AnimationController* m_animation = nullptr;
+    Settings* m_settings = nullptr;
 };

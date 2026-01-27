@@ -62,7 +62,7 @@ QtObject {
     readonly property int toolbarHeight: 48
     readonly property int panelMinWidth: 250
     readonly property int panelMaxWidth: 400
-    readonly property int timelineHeight: 150
+    readonly property int timelineHeight: 280
 
     // Icon sizes
     readonly property int iconSizeSmall: 16

@@ -1,5 +1,8 @@
 #include "projectmanager.h"
+#include "settings.h"
 #include "../animation/keyframemodel.h"
+#include "../animation/geooverlaymodel.h"
+#include "../animation/animationcontroller.h"
 #include "../overlays/overlaymanager.h"
 #include <QFile>
 #include <QFileInfo>
@@ -24,8 +27,45 @@ QString ProjectManager::projectName() const {
 bool ProjectManager::newProject() {
     m_keyframes->clear();
     m_overlays->clear();
+    if (m_geoOverlays) m_geoOverlays->clear();
+
+    // Reset animation settings to defaults
+    if (m_animation) {
+        m_animation->setExplicitDuration(60000.0);  // 60 seconds default
+        m_animation->setUseExplicitDuration(true);
+        m_animation->stop();
+    }
 
     m_projectPath.clear();
+    m_hasUnsavedChanges = false;
+
+    emit projectPathChanged();
+    emit projectNameChanged();
+    emit hasUnsavedChangesChanged();
+    emit projectLoaded();
+
+    return true;
+}
+
+bool ProjectManager::loadLastProject() {
+    if (!m_settings) return false;
+
+    QString lastPath = m_settings->lastProjectPath();
+    // Check if it's a file path (not just a directory)
+    if (lastPath.isEmpty() || !lastPath.endsWith(".kart", Qt::CaseInsensitive)) {
+        return false;
+    }
+
+    QFile file(lastPath);
+    if (!file.exists()) {
+        return false;
+    }
+
+    if (!loadFromFile(lastPath)) {
+        return false;
+    }
+
+    m_projectPath = lastPath;
     m_hasUnsavedChanges = false;
 
     emit projectPathChanged();
@@ -48,6 +88,11 @@ bool ProjectManager::openProject(const QUrl& path) {
 
     m_projectPath = filePath;
     m_hasUnsavedChanges = false;
+
+    // Save as last project for auto-load
+    if (m_settings) {
+        m_settings->setLastProjectPath(filePath);
+    }
 
     emit projectPathChanged();
     emit projectNameChanged();
@@ -129,28 +174,55 @@ bool ProjectManager::loadFromFile(const QString& path) {
     // Clear existing data
     m_keyframes->clear();
     m_overlays->clear();
+    if (m_geoOverlays) m_geoOverlays->clear();
 
     // Load keyframes
     QJsonArray keyframesArray = root["keyframes"].toArray();
     m_keyframes->fromJson(keyframesArray);
 
-    // Load overlays
+    // Load overlays (legacy)
     QJsonArray overlaysArray = root["overlays"].toArray();
     m_overlays->fromJson(overlaysArray);
+
+    // Load geo overlays (new system)
+    if (m_geoOverlays && root.contains("geoOverlays")) {
+        QJsonArray geoOverlaysArray = root["geoOverlays"].toArray();
+        m_geoOverlays->fromJson(geoOverlaysArray);
+    }
+
+    // Load animation settings
+    if (m_animation && root.contains("animation")) {
+        QJsonObject animObj = root["animation"].toObject();
+        m_animation->setExplicitDuration(animObj["explicitDuration"].toDouble(60000.0));
+        m_animation->setUseExplicitDuration(animObj["useExplicitDuration"].toBool(true));
+    }
 
     return true;
 }
 
 bool ProjectManager::saveToFile(const QString& path) {
     QJsonObject root;
-    root["version"] = "1.0";
+    root["version"] = "1.1";  // Bumped version for new format
     root["name"] = projectName();
 
     // Save keyframes
     root["keyframes"] = m_keyframes->toJson();
 
-    // Save overlays
+    // Save overlays (legacy)
     root["overlays"] = m_overlays->toJson();
+
+    // Save geo overlays (new system)
+    if (m_geoOverlays) {
+        root["geoOverlays"] = m_geoOverlays->toJson();
+    }
+
+    // Save animation settings
+    if (m_animation) {
+        QJsonObject animObj;
+        animObj["explicitDuration"] = m_animation->explicitDuration();
+        animObj["useExplicitDuration"] = m_animation->useExplicitDuration();
+        root["animation"] = animObj;
+    }
 
     QJsonDocument doc(root);
     QByteArray data = doc.toJson(QJsonDocument::Indented);
@@ -163,6 +235,11 @@ bool ProjectManager::saveToFile(const QString& path) {
 
     file.write(data);
     file.close();
+
+    // Save as last project for auto-load
+    if (m_settings) {
+        m_settings->setLastProjectPath(path);
+    }
 
     m_hasUnsavedChanges = false;
     emit hasUnsavedChangesChanged();

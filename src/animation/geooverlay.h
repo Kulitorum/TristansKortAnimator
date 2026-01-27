@@ -3,9 +3,11 @@
 #include <QString>
 #include <QColor>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QPointF>
 #include <QPolygonF>
 #include <QVector>
+#include "overlaykeyframe.h"
 
 // Types of geographic overlays
 enum class GeoOverlayType {
@@ -40,34 +42,101 @@ struct GeoOverlay {
 
     // Timeline properties
     double startTime = 0.0;         // When this overlay starts appearing (ms)
-    double fadeInDuration = 500.0;  // Fade in duration (ms)
+    double fadeInDuration = 0.0;    // Fade in duration (ms) - 0 = instant
     double endTime = 0.0;           // When it starts fading out (0 = never/end of animation)
-    double fadeOutDuration = 500.0; // Fade out duration (ms)
+    double fadeOutDuration = 0.0;   // Fade out duration (ms) - 0 = instant
+
+    // Property keyframes for animation
+    QVector<OverlayKeyframe> keyframes;
+
+    // Get interpolated properties at a given time
+    OverlayKeyframe propertiesAtTime(double timeMs) const {
+        if (keyframes.isEmpty()) {
+            // Return default keyframe with current appearance settings
+            OverlayKeyframe kf;
+            kf.timeMs = timeMs;
+            kf.extrusion = 0.0;
+            kf.fillColor = fillColor;
+            kf.borderColor = borderColor;
+            kf.opacity = 1.0;
+            kf.scale = 1.0;
+            return kf;
+        }
+
+        // Single keyframe - return its values
+        if (keyframes.size() == 1) {
+            OverlayKeyframe kf = keyframes.first();
+            kf.timeMs = timeMs;
+            return kf;
+        }
+
+        // Find surrounding keyframes
+        int beforeIdx = -1;
+        int afterIdx = -1;
+
+        for (int i = 0; i < keyframes.size(); ++i) {
+            if (keyframes[i].timeMs <= timeMs) {
+                beforeIdx = i;
+            }
+            if (keyframes[i].timeMs > timeMs && afterIdx < 0) {
+                afterIdx = i;
+            }
+        }
+
+        // Before first keyframe - use first keyframe values
+        if (beforeIdx < 0) {
+            OverlayKeyframe kf = keyframes.first();
+            kf.timeMs = timeMs;
+            return kf;
+        }
+
+        // After last keyframe - use last keyframe values
+        if (afterIdx < 0) {
+            OverlayKeyframe kf = keyframes.last();
+            kf.timeMs = timeMs;
+            return kf;
+        }
+
+        // Interpolate between keyframes
+        const OverlayKeyframe& from = keyframes[beforeIdx];
+        const OverlayKeyframe& to = keyframes[afterIdx];
+
+        double duration = to.timeMs - from.timeMs;
+        double progress = (duration > 0) ? (timeMs - from.timeMs) / duration : 0.0;
+
+        return OverlayKeyframe::interpolate(from, to, progress);
+    }
 
     // Calculate opacity at a given time
     double opacityAtTime(double timeMs, double totalDuration) const {
-        double effectiveEndTime = (endTime > 0) ? endTime : totalDuration;
+        // If endTime is 0, use totalDuration, but ensure at least visibility if totalDuration is also 0
+        double effectiveEndTime = (endTime > 0) ? endTime : (totalDuration > 0 ? totalDuration : 1e12);
 
         // Before start - invisible
         if (timeMs < startTime) {
             return 0.0;
         }
 
-        // During fade in
-        if (timeMs < startTime + fadeInDuration) {
+        // During fade in (only if fadeInDuration > 0)
+        if (fadeInDuration > 0 && timeMs < startTime + fadeInDuration) {
             double t = (timeMs - startTime) / fadeInDuration;
             return t;
         }
 
-        // After fade out complete - invisible
-        if (timeMs > effectiveEndTime + fadeOutDuration) {
+        // After fade out complete - invisible (only if fadeOutDuration > 0)
+        if (fadeOutDuration > 0 && timeMs > effectiveEndTime + fadeOutDuration) {
             return 0.0;
         }
 
-        // During fade out
-        if (timeMs > effectiveEndTime) {
+        // During fade out (only if fadeOutDuration > 0)
+        if (fadeOutDuration > 0 && timeMs > effectiveEndTime) {
             double t = (timeMs - effectiveEndTime) / fadeOutDuration;
             return 1.0 - t;
+        }
+
+        // After end time with no fade - invisible
+        if (endTime > 0 && timeMs > endTime) {
+            return 0.0;
         }
 
         // Fully visible
@@ -93,6 +162,14 @@ struct GeoOverlay {
         obj["fadeInDuration"] = fadeInDuration;
         obj["endTime"] = endTime;
         obj["fadeOutDuration"] = fadeOutDuration;
+
+        // Serialize keyframes
+        QJsonArray kfArray;
+        for (const auto& kf : keyframes) {
+            kfArray.append(kf.toJson());
+        }
+        obj["keyframes"] = kfArray;
+
         return obj;
     }
 
@@ -111,9 +188,16 @@ struct GeoOverlay {
         overlay.latitude = obj["latitude"].toDouble();
         overlay.longitude = obj["longitude"].toDouble();
         overlay.startTime = obj["startTime"].toDouble();
-        overlay.fadeInDuration = obj["fadeInDuration"].toDouble(500.0);
+        overlay.fadeInDuration = obj["fadeInDuration"].toDouble(0.0);
         overlay.endTime = obj["endTime"].toDouble();
-        overlay.fadeOutDuration = obj["fadeOutDuration"].toDouble(500.0);
+        overlay.fadeOutDuration = obj["fadeOutDuration"].toDouble(0.0);
+
+        // Deserialize keyframes
+        QJsonArray kfArray = obj["keyframes"].toArray();
+        for (const auto& kfVal : kfArray) {
+            overlay.keyframes.append(OverlayKeyframe::fromJson(kfVal.toObject()));
+        }
+
         return overlay;
     }
 

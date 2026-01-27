@@ -30,7 +30,15 @@ public:
         StartTimeRole,
         FadeInDurationRole,
         EndTimeRole,
-        FadeOutDurationRole
+        FadeOutDurationRole,
+        // Keyframe-related roles
+        KeyframeCountRole,
+        CurrentExtrusionRole,
+        CurrentFillColorRole,
+        CurrentBorderColorRole,
+        CurrentOpacityRole,
+        CurrentScaleRole,
+        PolygonsRole
     };
 
     explicit GeoOverlayModel(QObject* parent = nullptr);
@@ -71,6 +79,20 @@ public:
     // Get all visible overlays at a given time with their opacities
     QVector<QPair<const GeoOverlay*, double>> visibleOverlaysAtTime(double timeMs, double totalDuration) const;
 
+    // Keyframe management
+    Q_INVOKABLE int addKeyframe(int overlayIndex, double timeMs);
+    Q_INVOKABLE void updateKeyframe(int overlayIndex, int keyframeIndex, const QVariantMap& data);
+    Q_INVOKABLE void removeKeyframe(int overlayIndex, int keyframeIndex);
+    Q_INVOKABLE void moveKeyframe(int overlayIndex, int keyframeIndex, double newTimeMs);
+    Q_INVOKABLE QVariantMap getKeyframe(int overlayIndex, int keyframeIndex) const;
+    Q_INVOKABLE int keyframeCount(int overlayIndex) const;
+    Q_INVOKABLE QVariantList getAllKeyframes(int overlayIndex) const;
+    Q_INVOKABLE QVariantMap propertiesAtTime(int overlayIndex, double timeMs) const;
+
+    // Set current time for animated properties
+    void setCurrentTime(double timeMs);
+    double currentTime() const { return m_currentTime; }
+
     int count() const { return m_overlays.size(); }
     const QVector<GeoOverlay>& overlays() const { return m_overlays; }
 
@@ -82,11 +104,17 @@ signals:
     void countChanged();
     void overlayModified(int index);
     void dataModified();
+    void keyframeAdded(int overlayIndex, int keyframeIndex);
+    void keyframeRemoved(int overlayIndex, int keyframeIndex);
+    void keyframeModified(int overlayIndex, int keyframeIndex);
+    void currentTimeChanged();
 
 private:
     void loadGeometryForOverlay(GeoOverlay& overlay);
     QString generateId(GeoOverlayType type, const QString& name);
+    void sortKeyframes(int overlayIndex);
 
     QVector<GeoOverlay> m_overlays;
     GeoJsonParser* m_geoJson = nullptr;
+    double m_currentTime = 0.0;
 };
