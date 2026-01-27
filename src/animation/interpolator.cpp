@@ -17,20 +17,7 @@ CameraState Interpolator::interpolate(const Keyframe& from, const Keyframe& to, 
     state.longitude = interpolateLongitude(from.longitude, to.longitude, easedT);
     state.bearing = interpolateBearing(from.bearing, to.bearing, easedT);
     state.tilt = from.tilt + (to.tilt - from.tilt) * easedT;
-
-    // Zoom: slight arc to keep things in view during pan
-    double distance = greatCircleDistance(from.latitude, from.longitude,
-                                          to.latitude, to.longitude);
-
-    // Only do adaptive zoom for longer distances
-    if (distance > 100) {  // > 100 km
-        double zoomDip = std::min(2.0, std::log10(distance / 100.0));
-        double arcFactor = std::sin(easedT * M_PI);  // 0 at start/end, 1 at middle
-        double baseZoom = from.zoom + (to.zoom - from.zoom) * easedT;
-        state.zoom = baseZoom - zoomDip * arcFactor;
-    } else {
-        state.zoom = from.zoom + (to.zoom - from.zoom) * easedT;
-    }
+    state.zoom = from.zoom + (to.zoom - from.zoom) * easedT;
 
     return state;
 }

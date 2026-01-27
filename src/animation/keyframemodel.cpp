@@ -169,6 +169,29 @@ void KeyframeModel::duplicateKeyframe(int index) {
     emit dataModified();
 }
 
+void KeyframeModel::duplicateKeyframeAtTime(int index, double timeMs) {
+    if (index < 0 || index >= m_keyframes.size()) return;
+
+    Keyframe copy = m_keyframes.at(index);
+    copy.timeMs = snapToFrame(qMax(0.0, timeMs));
+
+    beginInsertRows(QModelIndex(), m_keyframes.size(), m_keyframes.size());
+    m_keyframes.append(copy);
+    endInsertRows();
+
+    sortByTime();
+
+    // Select the newly created keyframe
+    int newIndex = keyframeIndexAtTime(copy.timeMs);
+    if (newIndex >= 0) {
+        setCurrentIndex(newIndex);
+    }
+
+    emit countChanged();
+    emit totalDurationChanged();
+    emit dataModified();
+}
+
 void KeyframeModel::updateKeyframe(int index, const QVariantMap& data) {
     if (index < 0 || index >= m_keyframes.size()) return;
 

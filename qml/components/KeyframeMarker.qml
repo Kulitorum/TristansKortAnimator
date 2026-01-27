@@ -12,9 +12,11 @@ Item {
     property bool multiSelected: false
     property real keyframeTime: 0
     property real pixelsPerSecond: 100
+    property bool isCopying: false  // True when shift+dragging
 
     signal clicked(bool withCtrl)
     signal dragged(real newX)
+    signal copied(real newX)  // New signal for shift+drag copy
 
     // Multi-selection highlight
     Rectangle {
@@ -55,22 +57,73 @@ Item {
         font.bold: selected || multiSelected
     }
 
+    // Copy indicator (shows "+" when shift+dragging)
+    Rectangle {
+        visible: isCopying
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: -4
+        anchors.topMargin: 2
+        width: 14
+        height: 14
+        radius: 7
+        color: Theme.primaryColor
+        z: 10
+
+        Text {
+            anchors.centerIn: parent
+            text: "+"
+            color: "white"
+            font.pixelSize: 11
+            font.bold: true
+        }
+    }
+
     MouseArea {
+        id: markerMouseArea
         anchors.fill: parent
         anchors.margins: -5
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: marker.isCopying ? Qt.DragCopyCursor : Qt.PointingHandCursor
+
+        property real startX: 0
+        property bool wasDragged: false
 
         drag.target: marker
         drag.axis: Drag.XAxis
 
-        onClicked: (mouse) => {
-            marker.clicked(mouse.modifiers & Qt.ControlModifier)
+        onPressed: (mouse) => {
+            marker.isCopying = (mouse.modifiers & Qt.ShiftModifier)
+            startX = marker.x
+            wasDragged = false
         }
 
-        onReleased: {
-            if (drag.active) {
-                marker.dragged(marker.x + marker.width/2)
+        onPositionChanged: (mouse) => {
+            if (pressed && Math.abs(marker.x - startX) > 3) {
+                wasDragged = true
             }
+            if (pressed) {
+                marker.isCopying = (mouse.modifiers & Qt.ShiftModifier)
+            }
+        }
+
+        onClicked: (mouse) => {
+            if (!wasDragged) {
+                marker.clicked(mouse.modifiers & Qt.ControlModifier)
+            }
+        }
+
+        onReleased: (mouse) => {
+            if (wasDragged) {
+                let newX = marker.x + marker.width/2
+                if (marker.isCopying) {
+                    marker.x = startX
+                    marker.copied(newX)
+                } else {
+                    marker.dragged(newX)
+                }
+            }
+            marker.isCopying = false
+            wasDragged = false
         }
     }
 }

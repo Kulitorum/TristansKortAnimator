@@ -38,6 +38,7 @@ public:
     Q_INVOKABLE void removeKeyframe(int index);
     Q_INVOKABLE void moveKeyframe(int from, int to);
     Q_INVOKABLE void duplicateKeyframe(int index);
+    Q_INVOKABLE void duplicateKeyframeAtTime(int index, double timeMs);
     Q_INVOKABLE void updateKeyframe(int index, const QVariantMap& data);
     Q_INVOKABLE QVariantMap getKeyframe(int index) const;
     Q_INVOKABLE void clear();

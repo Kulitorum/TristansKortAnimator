@@ -216,6 +216,13 @@ Item {
                         Keyframes.setKeyframeTime(index, newTime)
                     }
                 }
+
+                onCopied: (newX) => {
+                    // Shift+drag: duplicate keyframe at new time position
+                    let newTime = (newX - 20 + width/2) / pixelsPerSecond * 1000
+                    newTime = Math.max(0, newTime)
+                    Keyframes.duplicateKeyframeAtTime(index, newTime)
+                }
             }
         }
 
@@ -513,14 +520,52 @@ Item {
             border.width: 1
         }
 
+        // Ghost marker for copy operation
+        Rectangle {
+            id: copyGhost
+            visible: isCopyingKeyframe && isDraggingKeyframe
+            width: 16
+            height: 16
+            rotation: 45
+            color: Theme.primaryColor
+            opacity: 0.6
+            border.color: Theme.primaryColorLight
+            border.width: 2
+            x: scrubOverlay.mouseX - 8
+            y: 25  // Center in keyframe track
+
+            // "+" badge
+            Rectangle {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.rightMargin: -12
+                anchors.topMargin: -8
+                rotation: -45  // Counter-rotate to be upright
+                width: 14
+                height: 14
+                radius: 7
+                color: Theme.primaryColor
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "+"
+                    color: "white"
+                    font.pixelSize: 11
+                    font.bold: true
+                }
+            }
+        }
+
         property bool isDraggingScrub: false
         property bool isDraggingKeyframe: false
         property bool isDraggingSelection: false
         property bool isPanning: false
+        property bool isCopyingKeyframe: false  // Shift+drag to copy
         property int draggedKeyframeIndex: -1
         property real dragStartX: 0
         property real panStartX: 0
         property real panStartContentX: 0
+        property real originalKeyframeTime: 0  // For copy operation
 
         // Find keyframe index at position, returns -1 if none
         function keyframeIndexAt(mouseX, mouseY) {
@@ -555,8 +600,13 @@ Item {
 
             if (mouse.modifiers & Qt.ShiftModifier) {
                 if (kfIndex >= 0) {
-                    // Shift+click on keyframe: add to selection
-                    Keyframes.selectKeyframe(kfIndex, true)
+                    // Shift+drag on keyframe: prepare to copy
+                    isDraggingKeyframe = true
+                    isCopyingKeyframe = true
+                    draggedKeyframeIndex = kfIndex
+                    dragStartX = mouse.x
+                    let kf = Keyframes.getKeyframe(kfIndex)
+                    originalKeyframeTime = kf.time
                 } else {
                     // Shift+drag on empty space: frame selection (rubber band)
                     isDraggingSelection = true
@@ -604,8 +654,8 @@ Item {
 
             if (isDraggingScrub) {
                 seekToPosition(timelineFlickable.contentX + mouse.x)
-            } else if (isDraggingKeyframe && draggedKeyframeIndex >= 0) {
-                // Dragging a keyframe to new time position
+            } else if (isDraggingKeyframe && draggedKeyframeIndex >= 0 && !isCopyingKeyframe) {
+                // Dragging a keyframe to new time position (only if not copying)
                 let contentX = timelineFlickable.contentX + mouse.x
                 let newTime = (contentX - 20) / pixelsPerSecond * 1000
                 newTime = Math.max(0, newTime)
@@ -662,9 +712,22 @@ Item {
                 }
             }
 
+            // Handle copy on shift+drag release
+            if (isCopyingKeyframe && draggedKeyframeIndex >= 0) {
+                let dragDistance = Math.abs(mouse.x - dragStartX)
+                if (dragDistance > 5) {
+                    // Actually dragged - create copy at drop position
+                    let contentX = timelineFlickable.contentX + mouse.x
+                    let newTime = (contentX - 20) / pixelsPerSecond * 1000
+                    newTime = Math.max(0, newTime)
+                    Keyframes.duplicateKeyframeAtTime(draggedKeyframeIndex, newTime)
+                }
+            }
+
             isDraggingScrub = false
             isDraggingKeyframe = false
             isDraggingSelection = false
+            isCopyingKeyframe = false
             isPanning = false
             draggedKeyframeIndex = -1
         }
@@ -744,120 +807,117 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            anchors.topMargin: 3
-            anchors.bottomMargin: 3
-            spacing: 8
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            anchors.topMargin: 4
+            anchors.bottomMargin: 4
+            spacing: 6
 
-            // Duration control
+            // Duration label and input
             Text {
                 text: "Duration:"
                 color: Theme.textColorDim
                 font.pixelSize: 11
+                Layout.alignment: Qt.AlignVCenter
             }
 
-            TextField {
-                id: durationField
-                implicitWidth: 70
-                implicitHeight: 24
-                text: Math.round(explicitDuration / 1000).toString()
-                horizontalAlignment: TextInput.AlignHCenter
-                validator: IntValidator { bottom: 1; top: 3600 }
-                font.pixelSize: 12
+            Rectangle {
+                implicitWidth: 50
+                implicitHeight: 22
+                color: Theme.surfaceColorLight
+                border.color: durationInput.activeFocus ? Theme.primaryColor : Theme.borderColor
+                border.width: 1
+                radius: 3
 
-                onEditingFinished: {
-                    let val = parseInt(text) || 60
-                    val = Math.max(1, Math.min(3600, val))
-                    if (AnimController) {
-                        AnimController.explicitDuration = val * 1000
+                TextInput {
+                    id: durationInput
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    text: Math.round(explicitDuration / 1000).toString()
+                    horizontalAlignment: TextInput.AlignHCenter
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: Theme.textColor
+                    font.pixelSize: 11
+                    selectByMouse: true
+                    validator: IntValidator { bottom: 1; top: 3600 }
+
+                    onEditingFinished: {
+                        let val = parseInt(text) || 60
+                        val = Math.max(1, Math.min(3600, val))
+                        if (AnimController) {
+                            AnimController.explicitDuration = val * 1000
+                        }
                     }
-                }
-
-                background: Rectangle {
-                    color: Theme.surfaceColorLight
-                    border.color: durationField.activeFocus ? Theme.primaryColor : Theme.borderColor
-                    border.width: 1
-                    radius: 3
                 }
             }
 
             Text {
-                text: "sec (" + formatTime(explicitDuration) + ")"
+                text: "s"
                 color: Theme.textColorDim
                 font.pixelSize: 11
+                Layout.alignment: Qt.AlignVCenter
             }
 
-            // Use explicit duration checkbox (custom compact version)
-            Rectangle {
-                implicitWidth: fixedRow.width + 8
-                implicitHeight: 20
-                color: fixedMouse.containsMouse ? Theme.surfaceColorLight : "transparent"
-                radius: 3
+            // Checkbox for fixed duration
+            CheckBox {
+                id: fixedCheck
+                checked: useExplicitDuration
+                onCheckedChanged: {
+                    if (AnimController) {
+                        AnimController.useExplicitDuration = checked
+                    }
+                }
 
-                Row {
-                    id: fixedRow
-                    anchors.centerIn: parent
-                    spacing: 4
+                indicator: Rectangle {
+                    implicitWidth: 14
+                    implicitHeight: 14
+                    x: fixedCheck.leftPadding
+                    y: parent.height / 2 - height / 2
+                    radius: 2
+                    color: "transparent"
+                    border.color: fixedCheck.checked ? Theme.primaryColor : Theme.textColorDim
 
                     Rectangle {
-                        width: 14
-                        height: 14
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: "transparent"
-                        border.color: useExplicitDuration ? Theme.primaryColor : Theme.textColorDim
-                        border.width: 1
-                        radius: 2
-
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 8
-                            height: 8
-                            radius: 1
-                            color: Theme.primaryColor
-                            visible: useExplicitDuration
-                        }
-                    }
-
-                    Text {
-                        text: "Fixed"
-                        color: Theme.textColorDim
-                        font.pixelSize: 11
-                        anchors.verticalCenter: parent.verticalCenter
+                        width: 8
+                        height: 8
+                        x: 3
+                        y: 3
+                        radius: 1
+                        color: Theme.primaryColor
+                        visible: fixedCheck.checked
                     }
                 }
 
-                MouseArea {
-                    id: fixedMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (AnimController) {
-                            AnimController.useExplicitDuration = !useExplicitDuration
-                        }
-                    }
+                contentItem: Text {
+                    text: "Fixed"
+                    font.pixelSize: 11
+                    color: Theme.textColorDim
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: fixedCheck.indicator.width + 4
                 }
 
-                ToolTip.visible: fixedMouse.containsMouse
+                ToolTip.visible: hovered
                 ToolTip.delay: 500
-                ToolTip.text: "Fixed: use set duration\nOff: duration from last keyframe"
+                ToolTip.text: "Fixed: use set duration\nOff: auto from last keyframe"
             }
 
             Item { Layout.fillWidth: true }
 
-            // Current time display
+            // Current time / total
             Text {
                 text: formatTime(currentTime) + " / " + formatTime(totalDuration)
                 color: Theme.textColor
                 font.pixelSize: 11
                 font.family: "Consolas"
+                Layout.alignment: Qt.AlignVCenter
             }
 
+            // Zoom level
             Text {
-                text: "Zoom: " + (Settings.timelineZoom * 100).toFixed(0) + "%"
+                text: (Settings.timelineZoom * 100).toFixed(0) + "%"
                 color: Theme.textColorDim
                 font.pixelSize: 11
+                Layout.alignment: Qt.AlignVCenter
             }
         }
     }
