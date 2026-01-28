@@ -28,6 +28,7 @@ Rectangle {
                 bearingSlider.value = kf.bearing
                 tiltSlider.value = kf.tilt
                 timeSpinBox.value = kf.time / 1000.0  // Convert ms to seconds
+                easingSlider.value = kf.easing !== undefined ? kf.easing : 0.5
             }
         }
     }
@@ -150,6 +151,59 @@ Rectangle {
                         Text {
                             text: qsTr("sec")
                             color: Theme.textColorDim
+                        }
+                    }
+                }
+
+                // Easing section - controls transition smoothness FROM this keyframe
+                GroupBox {
+                    title: qsTr("Easing (transition out)")
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.spacingSmall
+
+                        RowLayout {
+                            Text {
+                                text: qsTr("Smoothness:")
+                                color: Theme.textColorDim
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: Math.round(easingSlider.value * 100) + "%"
+                                color: Theme.textColor
+                            }
+                        }
+
+                        Slider {
+                            id: easingSlider
+                            Layout.fillWidth: true
+                            from: 0.0
+                            to: 1.0
+                            value: 0.5
+                            stepSize: 0.05
+                            live: true
+                            onValueChanged: {
+                                if (pressed) {
+                                    Keyframes.updateKeyframe(selectedIndex, {"easing": value})
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            spacing: Theme.spacingSmall
+                            Text {
+                                text: qsTr("Snappy")
+                                color: Theme.textColorDim
+                                font.pixelSize: Theme.fontSizeSmall
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: qsTr("Smooth")
+                                color: Theme.textColorDim
+                                font.pixelSize: Theme.fontSizeSmall
+                            }
                         }
                     }
                 }

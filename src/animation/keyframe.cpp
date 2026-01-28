@@ -10,6 +10,7 @@ QJsonObject Keyframe::toJson() const {
     obj["bearing"] = bearing;
     obj["tilt"] = tilt;
     obj["timeMs"] = timeMs;
+    obj["easing"] = easing;
     return obj;
 }
 
@@ -24,6 +25,7 @@ Keyframe Keyframe::fromJson(const QJsonObject& obj) {
         kf.bearing = obj["bearing"].toDouble();
         kf.tilt = obj["tilt"].toDouble();
         kf.timeMs = obj["timeMs"].toDouble(0.0);
+        kf.easing = obj["easing"].toDouble(0.5);  // Default to medium smoothness
     } else {
         // Old format with zoom - refuse to load
         qWarning() << "Old keyframe format detected (uses 'zoom' instead of 'altitude'). Please create a new project.";

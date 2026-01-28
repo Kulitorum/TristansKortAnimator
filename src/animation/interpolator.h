@@ -26,8 +26,9 @@ public:
     // Main interpolation function - simple ease-in-out between keyframes
     CameraState interpolate(const Keyframe& from, const Keyframe& to, double t);
 
-    // Easing function
+    // Easing functions
     static double easeInOut(double t);
+    static double adaptiveEaseInOut(double t, double smoothness, double fromAlt, double toAlt);
 
     // Utility functions
     static double greatCircleDistance(double lat1, double lon1, double lat2, double lon2);

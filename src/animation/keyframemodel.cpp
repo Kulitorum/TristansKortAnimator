@@ -25,6 +25,7 @@ QVariant KeyframeModel::data(const QModelIndex& index, int role) const {
         case BearingRole: return kf.bearing;
         case TiltRole: return kf.tilt;
         case TimeRole: return kf.timeMs;
+        case EasingRole: return kf.easing;
         default: return QVariant();
     }
 }
@@ -75,6 +76,12 @@ bool KeyframeModel::setData(const QModelIndex& index, const QVariant& value, int
                 changed = true;
             }
             break;
+        case EasingRole:
+            if (kf.easing != value.toDouble()) {
+                kf.easing = qBound(0.0, value.toDouble(), 1.0);
+                changed = true;
+            }
+            break;
     }
 
     if (changed) {
@@ -93,7 +100,8 @@ QHash<int, QByteArray> KeyframeModel::roleNames() const {
         {ZoomRole, "zoom"},
         {BearingRole, "bearing"},
         {TiltRole, "tilt"},
-        {TimeRole, "time"}
+        {TimeRole, "time"},
+        {EasingRole, "easing"}
     };
 }
 
@@ -202,6 +210,7 @@ void KeyframeModel::updateKeyframe(int index, const QVariantMap& data) {
     if (data.contains("zoom")) kf.setZoom(data["zoom"].toDouble());
     if (data.contains("bearing")) kf.bearing = data["bearing"].toDouble();
     if (data.contains("tilt")) kf.tilt = data["tilt"].toDouble();
+    if (data.contains("easing")) kf.easing = qBound(0.0, data["easing"].toDouble(), 1.0);
     if (data.contains("time")) {
         kf.timeMs = data["time"].toDouble();
         sortByTime();
@@ -225,7 +234,8 @@ QVariantMap KeyframeModel::getKeyframe(int index) const {
         {"zoom", kf.zoom()},  // Derived from altitude
         {"bearing", kf.bearing},
         {"tilt", kf.tilt},
-        {"time", kf.timeMs}
+        {"time", kf.timeMs},
+        {"easing", kf.easing}
     };
 }
 

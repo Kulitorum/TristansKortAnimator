@@ -17,6 +17,7 @@ class Keyframe {
     Q_PROPERTY(double bearing MEMBER bearing)
     Q_PROPERTY(double tilt MEMBER tilt)
     Q_PROPERTY(double timeMs MEMBER timeMs)
+    Q_PROPERTY(double easing MEMBER easing)
 
 public:
     double latitude = 0.0;
@@ -25,6 +26,7 @@ public:
     double bearing = 0.0;
     double tilt = 0.0;
     double timeMs = 0.0;  // Position on timeline (milliseconds)
+    double easing = 0.5;  // Easing smoothness for transition FROM this keyframe (0=snappy, 1=very smooth)
 
     // Convert between altitude and zoom level
     // Formula: altitude = 2^(25 - zoom) meters

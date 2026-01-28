@@ -8,8 +8,8 @@ Interpolator::Interpolator(QObject* parent)
 }
 
 CameraState Interpolator::interpolate(const Keyframe& from, const Keyframe& to, double t) {
-    // Apply ease-in-out to the time parameter
-    double easedT = easeInOut(t);
+    // Apply altitude-adaptive easing combined with per-keyframe smoothness
+    double easedT = adaptiveEaseInOut(t, from.easing, from.altitude, to.altitude);
 
     CameraState state;
 
@@ -23,6 +23,32 @@ CameraState Interpolator::interpolate(const Keyframe& from, const Keyframe& to, 
     state.tilt = from.tilt + (to.tilt - from.tilt) * easedT;
 
     return state;
+}
+
+double Interpolator::adaptiveEaseInOut(double t, double smoothness, double fromAlt, double toAlt) {
+    // Calculate altitude factor: closer to ground = higher factor
+    // Use minimum altitude of the transition for smoothness
+    double minAlt = qMin(fromAlt, toAlt);
+
+    // altFactor: 0 = very high (>1000km), 1 = very close (<100m)
+    // log10(100) = 2, log10(1000000) = 6
+    double altFactor = qBound(0.0, 1.0 - (std::log10(qMax(minAlt, 1.0)) - 2.0) / 4.0, 1.0);
+
+    // Combine user smoothness with altitude-adaptive component
+    // Base exponent: 2 (quadratic), max: 6 (very smooth)
+    // Higher smoothness or lower altitude = higher exponent = smoother curve
+    double combinedSmoothness = smoothness + altFactor * 0.5;  // altitude adds up to 0.5
+    combinedSmoothness = qBound(0.0, combinedSmoothness, 1.0);
+
+    // Map smoothness to exponent: 0->2 (snappy quadratic), 1->6 (very smooth)
+    double exponent = 2.0 + combinedSmoothness * 4.0;
+
+    // Generalized ease-in-out with variable exponent
+    if (t < 0.5) {
+        return std::pow(2.0, exponent - 1.0) * std::pow(t, exponent);
+    } else {
+        return 1.0 - std::pow(-2.0 * t + 2.0, exponent) / 2.0;
+    }
 }
 
 double Interpolator::easeInOut(double t) {

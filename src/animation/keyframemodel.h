@@ -21,7 +21,8 @@ public:
         ZoomRole,
         BearingRole,
         TiltRole,
-        TimeRole
+        TimeRole,
+        EasingRole
     };
 
     explicit KeyframeModel(QObject* parent = nullptr);
