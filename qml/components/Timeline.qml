@@ -840,7 +840,7 @@ Item {
                     Rectangle {
                         z: 5
                         visible: overlayBar.width > 40
-                        x: Math.min(overlayBar.width * 0.4, trackFadeIn * pixelsPerSecond / 1000) - 1
+                        x: Math.min(overlayBar.width - trackFadeOut * pixelsPerSecond / 1000, trackFadeIn * pixelsPerSecond / 1000) - 1
                         y: 0
                         width: 2
                         height: parent.height
@@ -877,7 +877,7 @@ Item {
                     Rectangle {
                         z: 5
                         visible: overlayBar.width > 40
-                        x: parent.width - Math.min(overlayBar.width * 0.4, trackFadeOut * pixelsPerSecond / 1000) - 1
+                        x: parent.width - Math.min(overlayBar.width - trackFadeIn * pixelsPerSecond / 1000, trackFadeOut * pixelsPerSecond / 1000) - 1
                         y: 0
                         width: 2
                         height: parent.height

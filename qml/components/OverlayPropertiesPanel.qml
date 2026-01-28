@@ -50,9 +50,9 @@ Rectangle {
 
                 // Timing
                 startTimeSpinBox.value = (overlay.startTime || 0) / 1000
-                fadeInSpinBox.value = (overlay.fadeInDuration || 0) / 1000
+                fadeInSpinBox.value = Math.round((overlay.fadeInDuration || 0) / 10)
                 endTimeSpinBox.value = (overlay.endTime || 0) / 1000
-                fadeOutSpinBox.value = (overlay.fadeOutDuration || 0) / 1000
+                fadeOutSpinBox.value = Math.round((overlay.fadeOutDuration || 0) / 10)
 
                 // City-specific
                 showLabelCheck.checked = overlay.showLabel !== false
@@ -333,12 +333,27 @@ Rectangle {
                                 id: fadeInSpinBox
                                 Layout.fillWidth: true
                                 from: 0
-                                to: 60
+                                to: 6000
+                                stepSize: 10
                                 value: 0
                                 editable: true
+                                property int decimals: 2
+                                property real realValue: value / 100
+                                validator: DoubleValidator {
+                                    bottom: Math.min(fadeInSpinBox.from, fadeInSpinBox.to)
+                                    top: Math.max(fadeInSpinBox.from, fadeInSpinBox.to)
+                                    decimals: fadeInSpinBox.decimals
+                                    notation: DoubleValidator.StandardNotation
+                                }
+                                textFromValue: function(value, locale) {
+                                    return Number(value / 100).toLocaleString(locale, 'f', decimals)
+                                }
+                                valueFromText: function(text, locale) {
+                                    return Math.round(Number.fromLocaleString(locale, text) * 100)
+                                }
                                 onValueModified: {
                                     if (hasOverlay) {
-                                        GeoOverlays.updateOverlay(selectedIndex, {"fadeInDuration": value * 1000})
+                                        GeoOverlays.updateOverlay(selectedIndex, {"fadeInDuration": value * 10})
                                     }
                                 }
                             }
@@ -388,12 +403,27 @@ Rectangle {
                                 id: fadeOutSpinBox
                                 Layout.fillWidth: true
                                 from: 0
-                                to: 60
+                                to: 6000
+                                stepSize: 10
                                 value: 0
                                 editable: true
+                                property int decimals: 2
+                                property real realValue: value / 100
+                                validator: DoubleValidator {
+                                    bottom: Math.min(fadeOutSpinBox.from, fadeOutSpinBox.to)
+                                    top: Math.max(fadeOutSpinBox.from, fadeOutSpinBox.to)
+                                    decimals: fadeOutSpinBox.decimals
+                                    notation: DoubleValidator.StandardNotation
+                                }
+                                textFromValue: function(value, locale) {
+                                    return Number(value / 100).toLocaleString(locale, 'f', decimals)
+                                }
+                                valueFromText: function(text, locale) {
+                                    return Math.round(Number.fromLocaleString(locale, text) * 100)
+                                }
                                 onValueModified: {
                                     if (hasOverlay) {
-                                        GeoOverlays.updateOverlay(selectedIndex, {"fadeOutDuration": value * 1000})
+                                        GeoOverlays.updateOverlay(selectedIndex, {"fadeOutDuration": value * 10})
                                     }
                                 }
                             }
