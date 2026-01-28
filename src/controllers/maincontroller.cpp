@@ -182,9 +182,8 @@ void MainController::addKeyframeAtCurrentPosition() {
     int newIndex = m_keyframes->keyframeIndexAtTime(currentTime);
     if (newIndex < 0) newIndex = m_keyframes->count() - 1;
 
-    // Select the newly added keyframe and enable edit mode
+    // Select the newly added keyframe
     m_keyframes->setCurrentIndex(newIndex);
-    m_keyframes->setEditMode(true);
 
     // Precache tiles for the new keyframe
     precacheTilesForPosition(
@@ -200,7 +199,7 @@ void MainController::goToKeyframe(int index) {
     const auto& kf = m_keyframes->at(index);
     m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom(), kf.bearing, kf.tilt);
     m_keyframes->setCurrentIndex(index);
-    m_keyframes->setEditMode(true);  // Enable edit mode when navigating to a keyframe
+    // Don't auto-enable editMode - let user explicitly enable it or use autoKey
 }
 
 void MainController::setTileSource(int sourceIndex) {

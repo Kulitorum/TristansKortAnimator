@@ -432,15 +432,40 @@ ApplicationWindow {
                 }
             }
 
-            // Center - Map/Globe and Timeline
-            ColumnLayout {
+            // Center - Map/Globe and Timeline (vertical split for resizable timeline)
+            SplitView {
                 SplitView.fillWidth: true
-                spacing: 0
+                orientation: Qt.Vertical
+
+                // Custom handle for vertical resizing
+                handle: Rectangle {
+                    implicitWidth: parent.width
+                    implicitHeight: 6
+                    color: SplitHandle.pressed ? Theme.primaryColor :
+                           SplitHandle.hovered ? Theme.borderColorLight : Theme.borderColor
+
+                    // Grip indicator dots
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Repeater {
+                            model: 3
+                            Rectangle {
+                                width: 4
+                                height: 4
+                                radius: 2
+                                color: SplitHandle.pressed ? "white" :
+                                       SplitHandle.hovered ? Theme.textColor : Theme.textColorDim
+                            }
+                        }
+                    }
+                }
 
                 // View container (2D Map or 3D Globe)
                 Item {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+                    SplitView.fillWidth: true
+                    SplitView.fillHeight: true
+                    SplitView.minimumHeight: 200
 
                     // 2D Map view
                     MapView {
@@ -466,11 +491,12 @@ ApplicationWindow {
                     }
                 }
 
-                // Unified Timeline (Camera keyframes + Overlay tracks)
+                // Unified Timeline (Camera keyframes + Overlay tracks) - now resizable
                 Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 220
-                    Layout.minimumHeight: 150
+                    SplitView.fillWidth: true
+                    SplitView.preferredHeight: 220
+                    SplitView.minimumHeight: 100
+                    SplitView.maximumHeight: 500
                     color: Theme.timelineBackground
 
                     Timeline {
