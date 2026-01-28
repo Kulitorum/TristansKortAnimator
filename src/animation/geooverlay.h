@@ -16,6 +16,63 @@ enum class GeoOverlayType {
     City        // Point - city marker
 };
 
+// An animation effect applied to an overlay
+struct OverlayEffect {
+    QString type;               // "opacity", "extrusion", "scale", "fillColor", "borderColor"
+    double startTime = 0.0;     // When effect starts (ms)
+    double endTime = 10000.0;   // When effect ends (ms)
+    double fadeInDuration = 500.0;
+    double fadeOutDuration = 500.0;
+    double value = 1.0;         // For non-color effects
+    QColor color = Qt::white;   // For color effects
+
+    QJsonObject toJson() const {
+        QJsonObject obj;
+        obj["type"] = type;
+        obj["startTime"] = startTime;
+        obj["endTime"] = endTime;
+        obj["fadeInDuration"] = fadeInDuration;
+        obj["fadeOutDuration"] = fadeOutDuration;
+        obj["value"] = value;
+        obj["color"] = color.name(QColor::HexArgb);
+        return obj;
+    }
+
+    static OverlayEffect fromJson(const QJsonObject& obj) {
+        OverlayEffect effect;
+        effect.type = obj["type"].toString();
+        effect.startTime = obj["startTime"].toDouble();
+        effect.endTime = obj["endTime"].toDouble(10000.0);
+        effect.fadeInDuration = obj["fadeInDuration"].toDouble(500.0);
+        effect.fadeOutDuration = obj["fadeOutDuration"].toDouble(500.0);
+        effect.value = obj["value"].toDouble(1.0);
+        effect.color = QColor(obj["color"].toString());
+        return effect;
+    }
+
+    // Get effect intensity at a given time (0-1)
+    double intensityAtTime(double timeMs) const {
+        if (timeMs < startTime) return 0.0;
+        if (timeMs > endTime + fadeOutDuration) return 0.0;
+
+        // Fade in
+        if (fadeInDuration > 0 && timeMs < startTime + fadeInDuration) {
+            return (timeMs - startTime) / fadeInDuration;
+        }
+
+        // Fade out
+        if (fadeOutDuration > 0 && timeMs > endTime) {
+            double t = (timeMs - endTime) / fadeOutDuration;
+            return 1.0 - t;
+        }
+
+        // Fully active
+        if (timeMs <= endTime) return 1.0;
+
+        return 0.0;
+    }
+};
+
 // A geographic overlay with timeline properties
 struct GeoOverlay {
     // Identity
@@ -56,6 +113,9 @@ struct GeoOverlay {
 
     // New: Per-property keyframe tracks for independent animation
     OverlayPropertyTracks propertyTracks;
+
+    // Animation effects
+    QVector<OverlayEffect> effects;
 
     // Track expansion state (UI only, not saved)
     bool expanded = false;
@@ -200,6 +260,15 @@ struct GeoOverlay {
             obj["propertyTracks"] = propertyTracks.toJson();
         }
 
+        // Serialize effects
+        if (!effects.isEmpty()) {
+            QJsonArray effectsArray;
+            for (const auto& effect : effects) {
+                effectsArray.append(effect.toJson());
+            }
+            obj["effects"] = effectsArray;
+        }
+
         // Serialize city boundary if present
         if (hasCityBoundary && !boundaryCoordinates.isEmpty()) {
             obj["boundaryCoordinates"] = boundaryCoordinates;
@@ -239,6 +308,14 @@ struct GeoOverlay {
         // Deserialize per-property tracks
         if (obj.contains("propertyTracks")) {
             overlay.propertyTracks = OverlayPropertyTracks::fromJson(obj["propertyTracks"].toObject());
+        }
+
+        // Deserialize effects
+        if (obj.contains("effects")) {
+            QJsonArray effectsArray = obj["effects"].toArray();
+            for (const auto& effectVal : effectsArray) {
+                overlay.effects.append(OverlayEffect::fromJson(effectVal.toObject()));
+            }
         }
 
         // Deserialize city boundary if present

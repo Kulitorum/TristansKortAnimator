@@ -109,6 +109,13 @@ public:
     Q_INVOKABLE void setExpanded(int overlayIndex, bool expanded);
     Q_INVOKABLE bool isExpanded(int overlayIndex) const;
 
+    // Effect management
+    Q_INVOKABLE void addEffect(int overlayIndex, const QString& type);
+    Q_INVOKABLE void removeEffect(int overlayIndex, int effectIndex);
+    Q_INVOKABLE void updateEffect(int overlayIndex, int effectIndex, const QVariantMap& data);
+    Q_INVOKABLE QVariantList getEffects(int overlayIndex) const;
+    Q_INVOKABLE int effectCount(int overlayIndex) const;
+
     // Set current time for animated properties
     void setCurrentTime(double timeMs);
     double currentTime() const { return m_currentTime; }

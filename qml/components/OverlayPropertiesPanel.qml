@@ -10,6 +10,7 @@ Rectangle {
 
     property int selectedIndex: GeoOverlays ? GeoOverlays.selectedIndex : -1
     property bool hasOverlay: GeoOverlays && selectedIndex >= 0 && selectedIndex < GeoOverlays.count
+    property bool updatingFromModel: false  // Guard to prevent circular updates
 
     // Helper to get overlay data
     function getVal(prop, defaultVal) {
@@ -20,6 +21,9 @@ Rectangle {
 
     // Refresh all controls when selection changes
     function refreshControls() {
+        if (updatingFromModel) return  // Prevent re-entry
+        updatingFromModel = true
+
         if (hasOverlay) {
             var overlay = GeoOverlays.getOverlay(selectedIndex)
             if (overlay) {
@@ -29,16 +33,19 @@ Rectangle {
 
                 // Values
                 borderWidthSlider.value = overlay.borderWidth || 2
-                fillOpacitySlider.value = (overlay.fillColor ? Qt.rgba(0,0,0,1).a : 0.5) * 100
 
                 // Parse alpha from colors
                 var fc = overlay.fillColor
                 if (fc) {
                     fillOpacitySlider.value = Math.round(fc.a * 100)
+                } else {
+                    fillOpacitySlider.value = 50
                 }
                 var bc = overlay.borderColor
                 if (bc) {
                     borderOpacitySlider.value = Math.round(bc.a * 100)
+                } else {
+                    borderOpacitySlider.value = 100
                 }
 
                 // Timing
@@ -52,6 +59,8 @@ Rectangle {
                 markerRadiusSlider.value = overlay.markerRadius || 8
             }
         }
+
+        updatingFromModel = false
     }
 
     onSelectedIndexChanged: refreshControls()
@@ -59,13 +68,11 @@ Rectangle {
     Connections {
         target: GeoOverlays
         function onSelectedIndexChanged() {
-            selectedIndex = GeoOverlays.selectedIndex
-            refreshControls()
+            overlayPanel.refreshControls()
         }
         function onOverlayModified(index) {
-            if (index === selectedIndex) refreshControls()
+            if (index === overlayPanel.selectedIndex) overlayPanel.refreshControls()
         }
-        function onDataModified() { refreshControls() }
     }
 
     Component.onCompleted: refreshControls()
@@ -180,7 +187,7 @@ Rectangle {
                                 value: 50
                                 stepSize: 5
                                 onValueChanged: {
-                                    if (pressed && hasOverlay) {
+                                    if (!updatingFromModel && hasOverlay) {
                                         var c = fillColorRect.color
                                         var newColor = Qt.rgba(c.r, c.g, c.b, value / 100)
                                         GeoOverlays.updateOverlay(selectedIndex, {"fillColor": newColor})
@@ -237,7 +244,7 @@ Rectangle {
                                 value: 100
                                 stepSize: 5
                                 onValueChanged: {
-                                    if (pressed && hasOverlay) {
+                                    if (!updatingFromModel && hasOverlay) {
                                         var c = borderColorRect.color
                                         var newColor = Qt.rgba(c.r, c.g, c.b, value / 100)
                                         GeoOverlays.updateOverlay(selectedIndex, {"borderColor": newColor})
@@ -267,7 +274,7 @@ Rectangle {
                                 value: 2
                                 stepSize: 0.5
                                 onValueChanged: {
-                                    if (pressed && hasOverlay) {
+                                    if (!updatingFromModel && hasOverlay) {
                                         GeoOverlays.updateOverlay(selectedIndex, {"borderWidth": value})
                                     }
                                 }
@@ -411,7 +418,7 @@ Rectangle {
                             text: qsTr("Show Label")
                             checked: true
                             onCheckedChanged: {
-                                if (hasOverlay) {
+                                if (!updatingFromModel && hasOverlay) {
                                     GeoOverlays.updateOverlay(selectedIndex, {"showLabel": checked})
                                 }
                             }
@@ -433,7 +440,7 @@ Rectangle {
                                 value: 8
                                 stepSize: 1
                                 onValueChanged: {
-                                    if (pressed && hasOverlay) {
+                                    if (!updatingFromModel && hasOverlay) {
                                         GeoOverlays.updateOverlay(selectedIndex, {"markerRadius": value})
                                     }
                                 }
@@ -510,6 +517,198 @@ Rectangle {
                     }
                 }
 
+                // Add Effects section
+                GroupBox {
+                    title: qsTr("Effects")
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Theme.spacingSmall
+
+                        Text {
+                            text: qsTr("Add animation effects to this overlay")
+                            color: Theme.textColorDim
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+
+                        // Effect buttons grid
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: 4
+                            rowSpacing: 4
+
+                            Button {
+                                text: "Opacity"
+                                Layout.fillWidth: true
+                                onClicked: {
+                                    GeoOverlays.addEffect(selectedIndex, "opacity")
+                                    addEffectRequested("opacity")
+                                }
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    color: "#4CAF50"
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            Button {
+                                text: "Extrusion"
+                                Layout.fillWidth: true
+                                onClicked: {
+                                    GeoOverlays.addEffect(selectedIndex, "extrusion")
+                                    addEffectRequested("extrusion")
+                                }
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    color: "#2196F3"
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            Button {
+                                text: "Scale"
+                                Layout.fillWidth: true
+                                onClicked: {
+                                    GeoOverlays.addEffect(selectedIndex, "scale")
+                                    addEffectRequested("scale")
+                                }
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    color: "#FF9800"
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            Button {
+                                text: "Fill Color"
+                                Layout.fillWidth: true
+                                onClicked: {
+                                    GeoOverlays.addEffect(selectedIndex, "fillColor")
+                                    addEffectRequested("fillColor")
+                                }
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    color: "#E91E63"
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+
+                            Button {
+                                text: "Border Color"
+                                Layout.fillWidth: true
+                                Layout.columnSpan: 2
+                                onClicked: {
+                                    GeoOverlays.addEffect(selectedIndex, "borderColor")
+                                    addEffectRequested("borderColor")
+                                }
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    color: "#9C27B0"
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+
+                        // List of current effects
+                        Text {
+                            visible: effectsList.count > 0
+                            text: qsTr("Current effects:")
+                            color: Theme.textColorDim
+                            font.pixelSize: 10
+                            Layout.topMargin: 8
+                        }
+
+                        Repeater {
+                            id: effectsList
+                            model: hasOverlay && GeoOverlays ? GeoOverlays.getEffects(selectedIndex) : []
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 24
+                                radius: 3
+                                color: Theme.surfaceColorLight
+
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.margins: 4
+                                    spacing: 6
+
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: {
+                                            switch(modelData.type) {
+                                                case "opacity": return "#4CAF50"
+                                                case "extrusion": return "#2196F3"
+                                                case "scale": return "#FF9800"
+                                                case "fillColor": return "#E91E63"
+                                                case "borderColor": return "#9C27B0"
+                                                default: return Theme.primaryColor
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: modelData.type || "Effect"
+                                        color: Theme.textColor
+                                        font.pixelSize: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    Item { width: 1; Layout.fillWidth: true }
+
+                                    Text {
+                                        text: "×"
+                                        color: effectDelMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
+                                        font.pixelSize: 14
+                                        anchors.verticalCenter: parent.verticalCenter
+
+                                        MouseArea {
+                                            id: effectDelMouse
+                                            anchors.fill: parent
+                                            anchors.margins: -4
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: GeoOverlays.removeEffect(selectedIndex, index)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Actions
                 RowLayout {
                     Layout.fillWidth: true
@@ -534,6 +733,9 @@ Rectangle {
             }
         }
     }
+
+    // Signal when effect is added
+    signal addEffectRequested(string effectType)
 
     // Color Dialogs
     ColorDialog {

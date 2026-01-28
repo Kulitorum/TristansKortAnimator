@@ -5,6 +5,7 @@
 #include <QVariantMap>
 #include <QVector>
 #include <QJsonObject>
+#include <QJsonArray>
 
 struct GeoFeature {
     QString type;       // "country", "region", "city"

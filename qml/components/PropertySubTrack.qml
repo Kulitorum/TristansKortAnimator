@@ -14,133 +14,217 @@ Rectangle {
     property real minValue: 0
     property real maxValue: 1
 
+    // Bar timing - defaults to parent overlay timing
+    property real barStartTime: getBarStart()
+    property real barEndTime: getBarEnd()
+    property real barValue: (minValue + maxValue) / 2
+
+    function getBarStart() {
+        if (!GeoOverlays) return 0
+        let overlay = GeoOverlays.getOverlay(overlayIndex)
+        return overlay ? overlay.startTime : 0
+    }
+
+    function getBarEnd() {
+        if (!GeoOverlays) return 10000
+        let overlay = GeoOverlays.getOverlay(overlayIndex)
+        return overlay ? overlay.endTime : 10000
+    }
+
     color: "#0d1520"
     border.color: "#1a2a3a"
     border.width: 1
 
+    // Refresh when overlay changes
+    Connections {
+        target: GeoOverlays
+        function onOverlayModified(idx) {
+            if (idx === overlayIndex) {
+                barStartTime = getBarStart()
+                barEndTime = getBarEnd()
+            }
+        }
+    }
+
     // Track label
     Text {
-        x: 22
+        x: 8
         anchors.verticalCenter: parent.verticalCenter
         text: propertyName
         color: trackColor
         font.pixelSize: 9
         opacity: 0.8
+        z: 5
     }
 
-    // Track line
+    // Value input (small number box)
     Rectangle {
-        x: 80
+        x: 55
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - 90
-        height: 1
-        color: trackColor
-        opacity: 0.3
+        width: 32
+        height: 14
+        radius: 2
+        color: "#1a2535"
+        border.color: valueInput.activeFocus ? trackColor : "#2a3a4a"
+        visible: !isColorTrack
+
+        TextInput {
+            id: valueInput
+            anchors.fill: parent
+            anchors.margins: 2
+            text: barValue.toFixed(1)
+            color: trackColor
+            font.pixelSize: 9
+            horizontalAlignment: TextInput.AlignHCenter
+            selectByMouse: true
+
+            onEditingFinished: {
+                let val = parseFloat(text) || 0
+                val = Math.max(minValue, Math.min(maxValue, val))
+                barValue = val
+                text = val.toFixed(1)
+            }
+        }
     }
 
-    // Keyframes on this track
-    Repeater {
-        model: GeoOverlays ? GeoOverlays.getPropertyKeyframes(overlayIndex, propertyKey) : []
+    // Color swatch for color tracks
+    Rectangle {
+        visible: isColorTrack
+        x: 55
+        anchors.verticalCenter: parent.verticalCenter
+        width: 32
+        height: 14
+        radius: 2
+        color: {
+            if (!GeoOverlays) return trackColor
+            let overlay = GeoOverlays.getOverlay(overlayIndex)
+            if (!overlay) return trackColor
+            return propertyKey === "fillColor" ? overlay.fillColor : overlay.borderColor
+        }
+        border.color: "#2a3a4a"
+    }
 
+    // Horizontal bar (draggable)
+    Rectangle {
+        id: propertyBar
+        x: 95 + barStartTime * pixelsPerSecond / 1000
+        y: 3
+        width: Math.max(20, (barEndTime - barStartTime) * pixelsPerSecond / 1000)
+        height: parent.height - 6
+        radius: 3
+        color: Qt.rgba(trackColor.r, trackColor.g, trackColor.b, 0.4)
+        border.color: trackColor
+        border.width: 1
+        z: 2
+
+        // Left trim handle
         Rectangle {
-            id: keyframeDiamond
-            x: 80 + (modelData.time * pixelsPerSecond / 1000) - 4
-            anchors.verticalCenter: parent.verticalCenter
-            width: 8
-            height: 8
-            rotation: 45
-            color: isColorTrack ? (modelData.color || trackColor) : trackColor
-            border.color: "white"
-            border.width: 1
-            z: 10
-
-            // Tooltip showing value
-            ToolTip.visible: keyframeMouse.containsMouse
-            ToolTip.delay: 300
-            ToolTip.text: isColorTrack
-                ? "Color at " + (modelData.time / 1000).toFixed(1) + "s"
-                : propertyName + ": " + (modelData.value !== undefined ? modelData.value.toFixed(2) : "?") + " at " + (modelData.time / 1000).toFixed(1) + "s"
+            id: leftHandle
+            width: 4
+            height: parent.height
+            anchors.left: parent.left
+            color: leftHandleMouse.containsMouse || leftHandleMouse.pressed ? "white" : "transparent"
+            radius: 2
 
             MouseArea {
-                id: keyframeMouse
+                id: leftHandleMouse
                 anchors.fill: parent
-                anchors.margins: -4
+                anchors.margins: -3
                 hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
+                cursorShape: Qt.SizeHorCursor
 
                 property real dragStartX: 0
-                property real origTime: 0
+                property real origStart: 0
 
                 onPressed: (mouse) => {
-                    dragStartX = mouse.x
-                    origTime = modelData.time
+                    dragStartX = mapToItem(subTrack, mouse.x, 0).x
+                    origStart = barStartTime
                 }
 
                 onPositionChanged: (mouse) => {
                     if (pressed) {
-                        let delta = (mouse.x - dragStartX) / pixelsPerSecond * 1000
-                        let newTime = Math.max(0, origTime + delta)
-                        GeoOverlays.movePropertyKeyframe(overlayIndex, propertyKey, index, newTime)
+                        let currentX = mapToItem(subTrack, mouse.x, 0).x
+                        let delta = (currentX - dragStartX) / pixelsPerSecond * 1000
+                        barStartTime = Math.max(0, Math.min(barEndTime - 100, origStart + delta))
                     }
                 }
+            }
+        }
 
-                onDoubleClicked: {
-                    // Remove keyframe on double-click
-                    GeoOverlays.removePropertyKeyframe(overlayIndex, propertyKey, index)
+        // Right trim handle
+        Rectangle {
+            id: rightHandle
+            width: 4
+            height: parent.height
+            anchors.right: parent.right
+            color: rightHandleMouse.containsMouse || rightHandleMouse.pressed ? "white" : "transparent"
+            radius: 2
+
+            MouseArea {
+                id: rightHandleMouse
+                anchors.fill: parent
+                anchors.margins: -3
+                hoverEnabled: true
+                cursorShape: Qt.SizeHorCursor
+
+                property real dragStartX: 0
+                property real origEnd: 0
+
+                onPressed: (mouse) => {
+                    dragStartX = mapToItem(subTrack, mouse.x, 0).x
+                    origEnd = barEndTime
+                }
+
+                onPositionChanged: (mouse) => {
+                    if (pressed) {
+                        let currentX = mapToItem(subTrack, mouse.x, 0).x
+                        let delta = (currentX - dragStartX) / pixelsPerSecond * 1000
+                        barEndTime = Math.max(barStartTime + 100, origEnd + delta)
+                    }
                 }
             }
         }
-    }
 
-    // Add keyframe on double-click
-    MouseArea {
-        anchors.fill: parent
-        anchors.leftMargin: 80
-        z: -1
-
-        onDoubleClicked: (mouse) => {
-            let timeMs = (mouse.x / pixelsPerSecond) * 1000
-            if (isColorTrack) {
-                // For color tracks, use the current overlay color
-                let overlay = GeoOverlays.getOverlay(overlayIndex)
-                let color = propertyKey === "fillColor" ? overlay.fillColor : overlay.borderColor
-                GeoOverlays.addColorKeyframe(overlayIndex, propertyKey, timeMs, color)
-            } else {
-                // For value tracks, interpolate or use default
-                let defaultVal = (minValue + maxValue) / 2
-                GeoOverlays.addPropertyKeyframe(overlayIndex, propertyKey, timeMs, defaultVal)
-            }
-        }
-    }
-
-    // Add keyframe button
-    Text {
-        anchors.right: parent.right
-        anchors.rightMargin: 6
-        anchors.verticalCenter: parent.verticalCenter
-        text: "+"
-        color: addMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
-        font.pixelSize: 12
-        font.bold: true
-
+        // Middle drag area (move whole bar)
         MouseArea {
-            id: addMouse
+            id: middleDragMouse
             anchors.fill: parent
-            anchors.margins: -4
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
             hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                // Add keyframe at current playhead position
-                let timeMs = AnimController ? AnimController.currentTime : 0
-                if (isColorTrack) {
-                    let overlay = GeoOverlays.getOverlay(overlayIndex)
-                    let color = propertyKey === "fillColor" ? overlay.fillColor : overlay.borderColor
-                    GeoOverlays.addColorKeyframe(overlayIndex, propertyKey, timeMs, color)
-                } else {
-                    let defaultVal = (minValue + maxValue) / 2
-                    GeoOverlays.addPropertyKeyframe(overlayIndex, propertyKey, timeMs, defaultVal)
+            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+
+            property real dragStartX: 0
+            property real origStart: 0
+            property real origEnd: 0
+
+            onPressed: (mouse) => {
+                dragStartX = mapToItem(subTrack, mouse.x, 0).x
+                origStart = barStartTime
+                origEnd = barEndTime
+            }
+
+            onPositionChanged: (mouse) => {
+                if (pressed) {
+                    let currentX = mapToItem(subTrack, mouse.x, 0).x
+                    let delta = (currentX - dragStartX) / pixelsPerSecond * 1000
+                    let duration = origEnd - origStart
+                    let newStart = Math.max(0, origStart + delta)
+                    barStartTime = newStart
+                    barEndTime = newStart + duration
                 }
             }
+        }
+
+        // Value label on bar
+        Text {
+            visible: !isColorTrack && parent.width > 40
+            anchors.centerIn: parent
+            text: barValue.toFixed(1)
+            color: "white"
+            font.pixelSize: 9
+            font.bold: true
+            opacity: 0.8
         }
     }
 }

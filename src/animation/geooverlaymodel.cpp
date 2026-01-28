@@ -956,3 +956,98 @@ bool GeoOverlayModel::isExpanded(int overlayIndex) const {
     if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return false;
     return m_overlays[overlayIndex].expanded;
 }
+
+// ============ Effect management ============
+
+void GeoOverlayModel::addEffect(int overlayIndex, const QString& type) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    GeoOverlay& overlay = m_overlays[overlayIndex];
+
+    OverlayEffect effect;
+    effect.type = type;
+    effect.startTime = overlay.startTime;
+    effect.endTime = overlay.endTime > 0 ? overlay.endTime : overlay.startTime + 10000.0;
+    effect.fadeInDuration = 500.0;
+    effect.fadeOutDuration = 500.0;
+
+    // Set default values based on type
+    if (type == "opacity") {
+        effect.value = 1.0;
+    } else if (type == "extrusion") {
+        effect.value = 20.0;
+    } else if (type == "scale") {
+        effect.value = 1.5;
+    } else if (type == "fillColor") {
+        effect.color = overlay.fillColor;
+    } else if (type == "borderColor") {
+        effect.color = overlay.borderColor;
+    }
+
+    overlay.effects.append(effect);
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::removeEffect(int overlayIndex, int effectIndex) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& effects = m_overlays[overlayIndex].effects;
+    if (effectIndex < 0 || effectIndex >= effects.size()) return;
+
+    effects.remove(effectIndex);
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::updateEffect(int overlayIndex, int effectIndex, const QVariantMap& data) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& effects = m_overlays[overlayIndex].effects;
+    if (effectIndex < 0 || effectIndex >= effects.size()) return;
+
+    OverlayEffect& effect = effects[effectIndex];
+
+    if (data.contains("startTime")) effect.startTime = data["startTime"].toDouble();
+    if (data.contains("endTime")) effect.endTime = data["endTime"].toDouble();
+    if (data.contains("fadeInDuration")) effect.fadeInDuration = data["fadeInDuration"].toDouble();
+    if (data.contains("fadeOutDuration")) effect.fadeOutDuration = data["fadeOutDuration"].toDouble();
+    if (data.contains("value")) effect.value = data["value"].toDouble();
+    if (data.contains("color")) effect.color = data["color"].value<QColor>();
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+QVariantList GeoOverlayModel::getEffects(int overlayIndex) const {
+    QVariantList result;
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return result;
+
+    const auto& effects = m_overlays[overlayIndex].effects;
+    for (const auto& effect : effects) {
+        result.append(QVariantMap{
+            {"type", effect.type},
+            {"startTime", effect.startTime},
+            {"endTime", effect.endTime},
+            {"fadeInDuration", effect.fadeInDuration},
+            {"fadeOutDuration", effect.fadeOutDuration},
+            {"value", effect.value},
+            {"color", effect.color}
+        });
+    }
+
+    return result;
+}
+
+int GeoOverlayModel::effectCount(int overlayIndex) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return 0;
+    return m_overlays[overlayIndex].effects.size();
+}

@@ -13,132 +13,177 @@ Item {
     property int trackHeight: 30
     property int headerWidth: 150
 
-    // Always show at least the header, expand for tracks
-    implicitHeight: Math.max(60, GeoOverlays.count * trackHeight + 50)
+    // Fixed height with scroll for many overlays
+    property int maxVisibleTracks: 6
+    property int headerHeight: 40
+    property int totalTracksHeight: GeoOverlays.count * trackHeight
+    property int contentHeight: headerHeight + totalTracksHeight
+
+    implicitHeight: Math.max(80, Math.min(headerHeight + maxVisibleTracks * trackHeight, contentHeight) + 12)
 
     Rectangle {
         anchors.fill: parent
         color: Theme.timelineBackground
     }
 
-    // Header column (overlay names)
+    // Header row (fixed at top)
     Rectangle {
-        id: headerColumn
-        width: headerWidth
-        height: parent.height
+        id: headerRow
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: verticalScrollBar.left
+        height: headerHeight
         color: Theme.surfaceColor
-        z: 10
+        z: 20
+
+        // Header label (left side)
+        Rectangle {
+            width: headerWidth
+            height: parent.height
+            color: Theme.surfaceColor
+
+            Text {
+                anchors.fill: parent
+                anchors.margins: 8
+                text: qsTr("Geo Overlays (%1)").arg(GeoOverlays.count)
+                color: Theme.textColorDim
+                font.pixelSize: 11
+                font.bold: true
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            Rectangle {
+                anchors.right: parent.right
+                width: 1
+                height: parent.height
+                color: Theme.borderColor
+            }
+        }
 
         Rectangle {
+            anchors.bottom: parent.bottom
+            anchors.left: parent.left
             anchors.right: parent.right
-            width: 1
-            height: parent.height
+            height: 1
             color: Theme.borderColor
         }
+    }
 
-        // Header label
-        Text {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 8
-            height: 28
-            text: qsTr("Geo Overlays")
-            color: Theme.textColorDim
-            font.pixelSize: 11
-            font.bold: true
-            verticalAlignment: Text.AlignVCenter
-        }
+    // Header column (overlay names) - scrolls vertically
+    Flickable {
+        id: headerFlickable
+        anchors.top: headerRow.bottom
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        width: headerWidth
+        contentHeight: totalTracksHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: false  // Controlled by vertical scrollbar
 
-        // Overlay labels
-        Column {
-            anchors.top: parent.top
-            anchors.topMargin: 40
-            anchors.left: parent.left
-            anchors.right: parent.right
+        // Sync with track flickable
+        contentY: trackVerticalFlickable.contentY
 
-            Repeater {
-                model: GeoOverlays
+        Rectangle {
+            width: headerWidth
+            height: Math.max(headerFlickable.height, totalTracksHeight)
+            color: Theme.surfaceColor
 
-                Rectangle {
-                    width: headerColumn.width
-                    height: trackHeight
-                    color: trackMouseArea.containsMouse ? Theme.surfaceColorLight : "transparent"
+            Rectangle {
+                anchors.right: parent.right
+                width: 1
+                height: parent.height
+                color: Theme.borderColor
+            }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 4
-                        anchors.rightMargin: 4
-                        spacing: 2
+            Column {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
 
-                        // Type indicator (color-coded)
-                        Rectangle {
-                            width: 14
-                            height: 14
-                            radius: model.overlayType === 2 ? 7 : 2  // Circle for cities
-                            color: model.fillColor
-                            border.color: model.borderColor
-                            border.width: 1
-                        }
+                Repeater {
+                    model: GeoOverlays
 
-                        // Name and type
-                        Column {
-                            Layout.fillWidth: true
-                            spacing: 0
+                    Rectangle {
+                        width: headerWidth
+                        height: trackHeight
+                        color: trackMouseArea.containsMouse ? Theme.surfaceColorLight : "transparent"
 
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 4
+                            anchors.rightMargin: 4
+                            spacing: 2
+
+                            // Type indicator (color-coded)
+                            Rectangle {
+                                width: 14
+                                height: 14
+                                radius: model.overlayType === 2 ? 7 : 2  // Circle for cities
+                                color: model.fillColor
+                                border.color: model.borderColor
+                                border.width: 1
+                            }
+
+                            // Name and type
+                            Column {
+                                Layout.fillWidth: true
+                                spacing: 0
+
+                                Text {
+                                    width: parent.width
+                                    text: model.name
+                                    color: Theme.textColor
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: model.typeString + (model.parentName ? " - " + model.parentName : "")
+                                    color: Theme.textColorDim
+                                    font.pixelSize: 8
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            // Delete button
                             Text {
-                                width: parent.width
-                                text: model.name
-                                color: Theme.textColor
-                                font.pixelSize: 10
-                                elide: Text.ElideRight
-                            }
+                                text: "×"
+                                color: deleteBtn.containsMouse ? Theme.errorColor : Theme.textColorDim
+                                font.pixelSize: 14
 
-                            Text {
-                                width: parent.width
-                                text: model.typeString + (model.parentName ? " - " + model.parentName : "")
-                                color: Theme.textColorDim
-                                font.pixelSize: 8
-                                elide: Text.ElideRight
+                                MouseArea {
+                                    id: deleteBtn
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
+                                    onClicked: GeoOverlays.removeOverlay(index)
+                                }
                             }
                         }
 
-                        // Delete button
-                        Text {
-                            text: "x"
-                            color: deleteBtn.containsMouse ? Theme.errorColor : Theme.textColorDim
-                            font.pixelSize: 12
-
-                            MouseArea {
-                                id: deleteBtn
-                                anchors.fill: parent
-                                anchors.margins: -4
-                                hoverEnabled: true
-                                onClicked: GeoOverlays.removeOverlay(index)
-                            }
+                        MouseArea {
+                            id: trackMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.RightButton
+                            onClicked: trackContextMenu.popup()
                         }
-                    }
 
-                    MouseArea {
-                        id: trackMouseArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.RightButton
-                        onClicked: trackContextMenu.popup()
-                    }
-
-                    Menu {
-                        id: trackContextMenu
-                        MenuItem {
-                            text: qsTr("Edit Appearance...")
-                            onTriggered: {
-                                overlayEditor.overlayIndex = index
-                                overlayEditor.open()
+                        Menu {
+                            id: trackContextMenu
+                            MenuItem {
+                                text: qsTr("Edit Appearance...")
+                                onTriggered: {
+                                    overlayEditor.overlayIndex = index
+                                    overlayEditor.open()
+                                }
                             }
-                        }
-                        MenuItem {
-                            text: qsTr("Delete")
-                            onTriggered: GeoOverlays.removeOverlay(index)
+                            MenuItem {
+                                text: qsTr("Delete")
+                                onTriggered: GeoOverlays.removeOverlay(index)
+                            }
                         }
                     }
                 }
@@ -146,37 +191,65 @@ Item {
         }
     }
 
-    // Timeline content area
+    // Timeline content area - vertical scrolling container
     Flickable {
-        id: trackFlickable
-        anchors.left: headerColumn.right
-        anchors.right: parent.right
-        anchors.top: parent.top
+        id: trackVerticalFlickable
+        anchors.top: headerRow.bottom
         anchors.bottom: parent.bottom
-        contentWidth: Math.max(width, 40 + totalDuration * pixelsPerSecond / 1000 + 200)
+        anchors.left: headerFlickable.right
+        anchors.right: parent.right
+        contentHeight: totalTracksHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
-        // Grid lines
-        Repeater {
-            model: Math.ceil(totalDuration / 1000) + 2
+        // Vertical scrollbar - always visible when content exceeds view
+        ScrollBar.vertical: ScrollBar {
+            id: verticalScrollBar
+            policy: totalTracksHeight > trackVerticalFlickable.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+            width: 14
 
-            Rectangle {
-                x: 20 + index * pixelsPerSecond
-                width: 1
-                height: trackFlickable.height
-                color: Theme.borderColor
-                opacity: 0.2
+            contentItem: Rectangle {
+                implicitWidth: 10
+                radius: 5
+                color: verticalScrollBar.pressed ? Theme.primaryColor :
+                       verticalScrollBar.hovered ? Theme.textColorDim : Theme.borderColor
+            }
+
+            background: Rectangle {
+                implicitWidth: 14
+                color: Theme.surfaceColor
+                radius: 5
             }
         }
 
-        // Track bars
-        Column {
-            anchors.top: parent.top
-            anchors.topMargin: 40
+        // Horizontal flickable inside
+        Flickable {
+            id: trackFlickable
+            anchors.fill: parent
+            contentWidth: Math.max(width, 40 + totalDuration * pixelsPerSecond / 1000 + 200)
+            contentHeight: parent.contentHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
+            // Grid lines
             Repeater {
-                model: GeoOverlays
+                model: Math.ceil(totalDuration / 1000) + 2
+
+                Rectangle {
+                    x: 20 + index * pixelsPerSecond
+                    width: 1
+                    height: Math.max(trackVerticalFlickable.height, totalTracksHeight)
+                    color: Theme.borderColor
+                    opacity: 0.2
+                }
+            }
+
+            // Track bars
+            Column {
+                anchors.top: parent.top
+
+                Repeater {
+                    model: GeoOverlays
 
                 Item {
                     width: trackFlickable.contentWidth
@@ -362,9 +435,10 @@ Item {
                         }
                     }
                 }
-            }
-        }
-    }
+                }  // Repeater
+            }  // Column
+        }  // trackFlickable (horizontal)
+    }  // trackVerticalFlickable (vertical)
 
     // Scroll sync property
     property alias contentX: trackFlickable.contentX
