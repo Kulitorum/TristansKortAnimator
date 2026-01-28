@@ -50,6 +50,7 @@ MainController::MainController(QObject* parent)
     m_exporter->setAnimationController(m_animation);
 
     // Setup tile cache
+    m_tileCache->setMaxDiskCacheMB(m_settings->diskCacheMaxMB());
     m_tileCache->enableDiskCache(m_settings->tileCachePath());
 
     // Apply initial settings
@@ -80,6 +81,10 @@ void MainController::setupConnections() {
 
     connect(m_settings, &Settings::tileCacheMaxMBChanged, this, [this]() {
         m_tileCache->setMaxMemorySize(m_settings->tileCacheMaxMB());
+    });
+
+    connect(m_settings, &Settings::diskCacheMaxMBChanged, this, [this]() {
+        m_tileCache->setMaxDiskCacheMB(m_settings->diskCacheMaxMB());
     });
 
     // Track data modifications for unsaved changes

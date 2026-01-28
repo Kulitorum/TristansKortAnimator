@@ -98,6 +98,17 @@ void Settings::setTileCacheMaxMB(int mb) {
     }
 }
 
+int Settings::diskCacheMaxMB() const {
+    return m_settings.value("map/diskCacheMaxMB", 2048).toInt();  // Default 2GB
+}
+
+void Settings::setDiskCacheMaxMB(int mb) {
+    if (diskCacheMaxMB() != mb) {
+        m_settings.setValue("map/diskCacheMaxMB", mb);
+        emit diskCacheMaxMBChanged();
+    }
+}
+
 // Export settings
 int Settings::exportWidth() const {
     return m_settings.value("export/width", 1920).toInt();

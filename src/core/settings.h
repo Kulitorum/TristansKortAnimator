@@ -16,6 +16,7 @@ class Settings : public QObject {
     Q_PROPERTY(double nonHighlightedOpacity READ nonHighlightedOpacity WRITE setNonHighlightedOpacity NOTIFY nonHighlightedOpacityChanged)
     Q_PROPERTY(QString tileCachePath READ tileCachePath WRITE setTileCachePath NOTIFY tileCachePathChanged)
     Q_PROPERTY(int tileCacheMaxMB READ tileCacheMaxMB WRITE setTileCacheMaxMB NOTIFY tileCacheMaxMBChanged)
+    Q_PROPERTY(int diskCacheMaxMB READ diskCacheMaxMB WRITE setDiskCacheMaxMB NOTIFY diskCacheMaxMBChanged)
 
     // Export settings
     Q_PROPERTY(int exportWidth READ exportWidth WRITE setExportWidth NOTIFY exportWidthChanged)
@@ -62,6 +63,9 @@ public:
 
     int tileCacheMaxMB() const;
     void setTileCacheMaxMB(int mb);
+
+    int diskCacheMaxMB() const;
+    void setDiskCacheMaxMB(int mb);
 
     // Export settings
     int exportWidth() const;
@@ -111,6 +115,7 @@ signals:
     void nonHighlightedOpacityChanged();
     void tileCachePathChanged();
     void tileCacheMaxMBChanged();
+    void diskCacheMaxMBChanged();
     void exportWidthChanged();
     void exportHeightChanged();
     void exportFramerateChanged();

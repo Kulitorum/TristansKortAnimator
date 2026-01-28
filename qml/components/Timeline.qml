@@ -141,6 +141,25 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         interactive: false
 
+        // Vertical scrollbar for when there are many overlay tracks
+        ScrollBar.vertical: ScrollBar {
+            id: verticalTimelineScrollBar
+            policy: totalTracksHeight + 20 > timelineFlickable.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+            width: 12
+
+            contentItem: Rectangle {
+                implicitWidth: 8
+                radius: 4
+                color: verticalTimelineScrollBar.pressed ? Theme.primaryColor :
+                       verticalTimelineScrollBar.hovered ? Theme.textColorDim : Theme.borderColor
+            }
+
+            background: Rectangle {
+                implicitWidth: 12
+                color: Theme.surfaceColor
+            }
+        }
+
         // Track background with grid lines
         Rectangle {
             width: timelineFlickable.contentWidth
@@ -273,6 +292,22 @@ Item {
             }
             onReleased: {
                 isPanning = false
+            }
+
+            // Wheel for vertical scrolling in overlay tracks
+            onWheel: (wheel) => {
+                if (wheel.modifiers & Qt.ControlModifier) {
+                    // Ctrl+wheel: vertical scroll
+                    let scrollAmount = wheel.angleDelta.y > 0 ? -50 : 50
+                    timelineFlickable.contentY = Math.max(0, Math.min(
+                        timelineFlickable.contentHeight - timelineFlickable.height,
+                        timelineFlickable.contentY + scrollAmount
+                    ))
+                    wheel.accepted = true
+                } else {
+                    // Pass through to parent for zoom/horizontal scroll
+                    wheel.accepted = false
+                }
             }
         }
 
@@ -523,7 +558,7 @@ Item {
         // Ghost marker for copy operation
         Rectangle {
             id: copyGhost
-            visible: isCopyingKeyframe && isDraggingKeyframe
+            visible: scrubOverlay.isCopyingKeyframe && scrubOverlay.isDraggingKeyframe
             width: 16
             height: 16
             rotation: 45
@@ -732,9 +767,16 @@ Item {
             draggedKeyframeIndex = -1
         }
 
-        // Mousewheel handler: zoom (normal) or scroll (shift)
+        // Mousewheel handler: zoom (normal), horizontal scroll (shift), vertical scroll (ctrl)
         onWheel: (wheel) => {
-            if (wheel.modifiers & Qt.ShiftModifier) {
+            if (wheel.modifiers & Qt.ControlModifier) {
+                // Ctrl+wheel: vertical scroll (for many overlay tracks)
+                let scrollAmount = wheel.angleDelta.y > 0 ? -50 : 50
+                timelineFlickable.contentY = Math.max(0, Math.min(
+                    timelineFlickable.contentHeight - timelineFlickable.height,
+                    timelineFlickable.contentY + scrollAmount
+                ))
+            } else if (wheel.modifiers & Qt.ShiftModifier) {
                 // Shift+wheel: horizontal scroll
                 let scrollAmount = wheel.angleDelta.y > 0 ? -100 : 100
                 timelineFlickable.contentX = Math.max(0, Math.min(
