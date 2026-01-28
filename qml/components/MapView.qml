@@ -67,8 +67,10 @@ Item {
                 if (Math.abs(mouse.x - pressX) > clickThreshold ||
                     Math.abs(mouse.y - pressY) > clickThreshold) {
                     hasMoved = true
-                    // Auto-add keyframe if not near existing one, then enable edit mode
-                    MainController.ensureKeyframeAtCurrentTime()
+                    // Auto-add keyframe only if autoKey is enabled
+                    if (Settings.autoKey) {
+                        MainController.ensureKeyframeAtCurrentTime()
+                    }
                 }
 
                 // Pan the map (adjust lat/lon based on mouse movement)
@@ -85,8 +87,10 @@ Item {
 
         onWheel: (wheel) => {
             // Zoom with scroll wheel centered on mouse position
-            // Auto-add keyframe if not near existing one, then enable edit mode
-            MainController.ensureKeyframeAtCurrentTime()
+            // Auto-add keyframe only if autoKey is enabled
+            if (Settings.autoKey) {
+                MainController.ensureKeyframeAtCurrentTime()
+            }
 
             // Get the geo coordinates under the mouse BEFORE zoom
             // Note: screenToGeo returns QPointF(lat, lon) so x=lat, y=lon
@@ -243,7 +247,7 @@ Item {
             width: 40
             height: 40
             onClicked: {
-                MainController.ensureKeyframeAtCurrentTime()
+                if (Settings.autoKey) MainController.ensureKeyframeAtCurrentTime()
                 Camera.zoom = Math.min(19, Camera.zoom + 1)
             }
         }
@@ -253,7 +257,7 @@ Item {
             width: 40
             height: 40
             onClicked: {
-                MainController.ensureKeyframeAtCurrentTime()
+                if (Settings.autoKey) MainController.ensureKeyframeAtCurrentTime()
                 Camera.zoom = Math.max(1, Camera.zoom - 1)
             }
         }
@@ -271,7 +275,7 @@ Item {
         to: 60
         value: Camera.tilt
         onMoved: {
-            MainController.ensureKeyframeAtCurrentTime()
+            if (Settings.autoKey) MainController.ensureKeyframeAtCurrentTime()
             Camera.tilt = value
         }
 
@@ -313,7 +317,7 @@ Item {
 
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    MainController.ensureKeyframeAtCurrentTime()
+                    if (Settings.autoKey) MainController.ensureKeyframeAtCurrentTime()
                     let dx = mouse.x - width/2
                     let dy = mouse.y - height/2
                     let currentAngle = Math.atan2(dy, dx) * 180 / Math.PI
