@@ -348,14 +348,19 @@ Item {
                 x: 0
                 y: getOverlayTrackY(index)
                 width: timelineFlickable.contentWidth
-                height: overlayTrackHeight + (model.expanded ? propertySubTrackHeight * propertyTrackCount : 0)
+                height: overlayTrackHeight + (isExpanded ? propertySubTrackHeight * propertyTrackCount : 0)
 
                 property int overlayIdx: index
-                property bool isExpanded: model.expanded || false
+                property bool isExpanded: false  // Managed manually
                 property real trackStartTime: model.startTime
                 property real trackEndTime: model.endTime
                 property real trackFadeIn: model.fadeInDuration || 0
                 property real trackFadeOut: model.fadeOutDuration || 0
+
+                // Sync expanded state from model on load
+                Component.onCompleted: {
+                    isExpanded = GeoOverlays.isExpanded(index)
+                }
 
                 // Main overlay track row
                 Rectangle {
@@ -391,7 +396,8 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                GeoOverlays.setExpanded(index, !overlayTrackContainer.isExpanded)
+                                overlayTrackContainer.isExpanded = !overlayTrackContainer.isExpanded
+                                GeoOverlays.setExpanded(index, overlayTrackContainer.isExpanded)
                                 totalTracksHeight = calculateTotalTracksHeight()
                             }
                         }
