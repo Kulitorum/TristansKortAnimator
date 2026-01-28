@@ -46,3 +46,7 @@ desktop.ini
 *.ncb
 *.vcproj.*.user
 *.vcxproj.*.user
+
+# Installer
+installer/setupvars.iss
+installer/output/
