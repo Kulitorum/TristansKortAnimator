@@ -51,15 +51,33 @@ struct GeoOverlay {
     double endTime = 0.0;           // When it starts fading out (0 = never/end of animation)
     double fadeOutDuration = 0.0;   // Fade out duration (ms) - 0 = instant
 
-    // Property keyframes for animation
+    // Legacy: Unified property keyframes (deprecated, kept for compatibility)
     QVector<OverlayKeyframe> keyframes;
+
+    // New: Per-property keyframe tracks for independent animation
+    OverlayPropertyTracks propertyTracks;
+
+    // Track expansion state (UI only, not saved)
+    bool expanded = false;
 
     // Get interpolated properties at a given time
     OverlayKeyframe propertiesAtTime(double timeMs) const {
+        OverlayKeyframe kf;
+        kf.timeMs = timeMs;
+
+        // Use per-property tracks if any have keyframes
+        if (propertyTracks.hasAnyKeyframes()) {
+            kf.opacity = OverlayPropertyTracks::interpolateValue(propertyTracks.opacity, timeMs, 1.0);
+            kf.extrusion = OverlayPropertyTracks::interpolateValue(propertyTracks.extrusion, timeMs, 0.0);
+            kf.scale = OverlayPropertyTracks::interpolateValue(propertyTracks.scale, timeMs, 1.0);
+            kf.fillColor = OverlayPropertyTracks::interpolateColor(propertyTracks.fillColor, timeMs, fillColor);
+            kf.borderColor = OverlayPropertyTracks::interpolateColor(propertyTracks.borderColor, timeMs, borderColor);
+            return kf;
+        }
+
+        // Fall back to legacy unified keyframes
         if (keyframes.isEmpty()) {
             // Return default keyframe with current appearance settings
-            OverlayKeyframe kf;
-            kf.timeMs = timeMs;
             kf.extrusion = 0.0;
             kf.fillColor = fillColor;
             kf.borderColor = borderColor;
@@ -70,7 +88,7 @@ struct GeoOverlay {
 
         // Single keyframe - return its values
         if (keyframes.size() == 1) {
-            OverlayKeyframe kf = keyframes.first();
+            kf = keyframes.first();
             kf.timeMs = timeMs;
             return kf;
         }
@@ -90,14 +108,14 @@ struct GeoOverlay {
 
         // Before first keyframe - use first keyframe values
         if (beforeIdx < 0) {
-            OverlayKeyframe kf = keyframes.first();
+            kf = keyframes.first();
             kf.timeMs = timeMs;
             return kf;
         }
 
         // After last keyframe - use last keyframe values
         if (afterIdx < 0) {
-            OverlayKeyframe kf = keyframes.last();
+            kf = keyframes.last();
             kf.timeMs = timeMs;
             return kf;
         }
@@ -168,12 +186,19 @@ struct GeoOverlay {
         obj["endTime"] = endTime;
         obj["fadeOutDuration"] = fadeOutDuration;
 
-        // Serialize keyframes
-        QJsonArray kfArray;
-        for (const auto& kf : keyframes) {
-            kfArray.append(kf.toJson());
+        // Serialize legacy keyframes (if any)
+        if (!keyframes.isEmpty()) {
+            QJsonArray kfArray;
+            for (const auto& kf : keyframes) {
+                kfArray.append(kf.toJson());
+            }
+            obj["keyframes"] = kfArray;
         }
-        obj["keyframes"] = kfArray;
+
+        // Serialize per-property tracks
+        if (propertyTracks.hasAnyKeyframes()) {
+            obj["propertyTracks"] = propertyTracks.toJson();
+        }
 
         // Serialize city boundary if present
         if (hasCityBoundary && !boundaryCoordinates.isEmpty()) {
@@ -203,10 +228,17 @@ struct GeoOverlay {
         overlay.endTime = obj["endTime"].toDouble();
         overlay.fadeOutDuration = obj["fadeOutDuration"].toDouble(0.0);
 
-        // Deserialize keyframes
-        QJsonArray kfArray = obj["keyframes"].toArray();
-        for (const auto& kfVal : kfArray) {
-            overlay.keyframes.append(OverlayKeyframe::fromJson(kfVal.toObject()));
+        // Deserialize legacy keyframes
+        if (obj.contains("keyframes")) {
+            QJsonArray kfArray = obj["keyframes"].toArray();
+            for (const auto& kfVal : kfArray) {
+                overlay.keyframes.append(OverlayKeyframe::fromJson(kfVal.toObject()));
+            }
+        }
+
+        // Deserialize per-property tracks
+        if (obj.contains("propertyTracks")) {
+            overlay.propertyTracks = OverlayPropertyTracks::fromJson(obj["propertyTracks"].toObject());
         }
 
         // Deserialize city boundary if present

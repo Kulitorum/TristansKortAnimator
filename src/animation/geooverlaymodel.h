@@ -43,7 +43,9 @@ public:
         CurrentBorderColorRole,
         CurrentOpacityRole,
         CurrentScaleRole,
-        PolygonsRole
+        PolygonsRole,
+        ExpandedRole,
+        PropertyTracksRole
     };
 
     explicit GeoOverlayModel(QObject* parent = nullptr);
@@ -85,7 +87,7 @@ public:
     // Get all visible overlays at a given time with their opacities
     QVector<QPair<const GeoOverlay*, double>> visibleOverlaysAtTime(double timeMs, double totalDuration) const;
 
-    // Keyframe management
+    // Legacy keyframe management
     Q_INVOKABLE int addKeyframe(int overlayIndex, double timeMs);
     Q_INVOKABLE void updateKeyframe(int overlayIndex, int keyframeIndex, const QVariantMap& data);
     Q_INVOKABLE void removeKeyframe(int overlayIndex, int keyframeIndex);
@@ -94,6 +96,18 @@ public:
     Q_INVOKABLE int keyframeCount(int overlayIndex) const;
     Q_INVOKABLE QVariantList getAllKeyframes(int overlayIndex) const;
     Q_INVOKABLE QVariantMap propertiesAtTime(int overlayIndex, double timeMs) const;
+
+    // Per-property track management
+    Q_INVOKABLE void addPropertyKeyframe(int overlayIndex, const QString& property, double timeMs, double value);
+    Q_INVOKABLE void addColorKeyframe(int overlayIndex, const QString& property, double timeMs, const QColor& color);
+    Q_INVOKABLE void removePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex);
+    Q_INVOKABLE void movePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex, double newTimeMs);
+    Q_INVOKABLE void updatePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex, double value);
+    Q_INVOKABLE void updateColorKeyframe(int overlayIndex, const QString& property, int keyframeIndex, const QColor& color);
+    Q_INVOKABLE QVariantList getPropertyKeyframes(int overlayIndex, const QString& property) const;
+    Q_INVOKABLE int propertyKeyframeCount(int overlayIndex, const QString& property) const;
+    Q_INVOKABLE void setExpanded(int overlayIndex, bool expanded);
+    Q_INVOKABLE bool isExpanded(int overlayIndex) const;
 
     // Set current time for animated properties
     void setCurrentTime(double timeMs);

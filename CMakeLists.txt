@@ -158,6 +158,7 @@ set(QML_FILES
     qml/components/OverlayList.qml
     qml/components/OverlayPanel.qml
     qml/components/OverlayPropertiesPanel.qml
+    qml/components/PropertySubTrack.qml
     qml/components/MarkerEditor.qml
     qml/components/ArrowEditor.qml
     qml/components/RegionPicker.qml

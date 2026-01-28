@@ -118,6 +118,18 @@ QVariant GeoOverlayModel::data(const QModelIndex& index, int role) const {
             }
             return polygonList;
         }
+        case ExpandedRole:
+            return overlay.expanded;
+        case PropertyTracksRole: {
+            // Return counts of keyframes per property for UI
+            QVariantMap tracks;
+            tracks["opacity"] = overlay.propertyTracks.opacity.size();
+            tracks["extrusion"] = overlay.propertyTracks.extrusion.size();
+            tracks["scale"] = overlay.propertyTracks.scale.size();
+            tracks["fillColor"] = overlay.propertyTracks.fillColor.size();
+            tracks["borderColor"] = overlay.propertyTracks.borderColor.size();
+            return tracks;
+        }
         default: return QVariant();
     }
 }
@@ -220,7 +232,9 @@ QHash<int, QByteArray> GeoOverlayModel::roleNames() const {
         {CurrentBorderColorRole, "currentBorderColor"},
         {CurrentOpacityRole, "currentOpacity"},
         {CurrentScaleRole, "currentScale"},
-        {PolygonsRole, "polygons"}
+        {PolygonsRole, "polygons"},
+        {ExpandedRole, "expanded"},
+        {PropertyTracksRole, "propertyTracks"}
     };
 }
 
@@ -749,4 +763,196 @@ QVariantMap GeoOverlayModel::selectedOverlay() const {
         return QVariantMap();
     }
     return getOverlay(m_selectedIndex);
+}
+
+// ============ Per-property keyframe management ============
+
+void GeoOverlayModel::addPropertyKeyframe(int overlayIndex, const QString& property, double timeMs, double value) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+    PropertyKeyframe kf;
+    kf.timeMs = timeMs;
+    kf.value = value;
+
+    if (property == "opacity") {
+        tracks.opacity.append(kf);
+    } else if (property == "extrusion") {
+        tracks.extrusion.append(kf);
+    } else if (property == "scale") {
+        tracks.scale.append(kf);
+    }
+
+    tracks.sortAll();
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::addColorKeyframe(int overlayIndex, const QString& property, double timeMs, const QColor& color) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+    ColorKeyframe kf;
+    kf.timeMs = timeMs;
+    kf.color = color;
+
+    if (property == "fillColor") {
+        tracks.fillColor.append(kf);
+    } else if (property == "borderColor") {
+        tracks.borderColor.append(kf);
+    }
+
+    tracks.sortAll();
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::removePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "opacity" && keyframeIndex >= 0 && keyframeIndex < tracks.opacity.size()) {
+        tracks.opacity.remove(keyframeIndex);
+    } else if (property == "extrusion" && keyframeIndex >= 0 && keyframeIndex < tracks.extrusion.size()) {
+        tracks.extrusion.remove(keyframeIndex);
+    } else if (property == "scale" && keyframeIndex >= 0 && keyframeIndex < tracks.scale.size()) {
+        tracks.scale.remove(keyframeIndex);
+    } else if (property == "fillColor" && keyframeIndex >= 0 && keyframeIndex < tracks.fillColor.size()) {
+        tracks.fillColor.remove(keyframeIndex);
+    } else if (property == "borderColor" && keyframeIndex >= 0 && keyframeIndex < tracks.borderColor.size()) {
+        tracks.borderColor.remove(keyframeIndex);
+    }
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::movePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex, double newTimeMs) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "opacity" && keyframeIndex >= 0 && keyframeIndex < tracks.opacity.size()) {
+        tracks.opacity[keyframeIndex].timeMs = newTimeMs;
+    } else if (property == "extrusion" && keyframeIndex >= 0 && keyframeIndex < tracks.extrusion.size()) {
+        tracks.extrusion[keyframeIndex].timeMs = newTimeMs;
+    } else if (property == "scale" && keyframeIndex >= 0 && keyframeIndex < tracks.scale.size()) {
+        tracks.scale[keyframeIndex].timeMs = newTimeMs;
+    } else if (property == "fillColor" && keyframeIndex >= 0 && keyframeIndex < tracks.fillColor.size()) {
+        tracks.fillColor[keyframeIndex].timeMs = newTimeMs;
+    } else if (property == "borderColor" && keyframeIndex >= 0 && keyframeIndex < tracks.borderColor.size()) {
+        tracks.borderColor[keyframeIndex].timeMs = newTimeMs;
+    }
+
+    tracks.sortAll();
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::updatePropertyKeyframe(int overlayIndex, const QString& property, int keyframeIndex, double value) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "opacity" && keyframeIndex >= 0 && keyframeIndex < tracks.opacity.size()) {
+        tracks.opacity[keyframeIndex].value = value;
+    } else if (property == "extrusion" && keyframeIndex >= 0 && keyframeIndex < tracks.extrusion.size()) {
+        tracks.extrusion[keyframeIndex].value = value;
+    } else if (property == "scale" && keyframeIndex >= 0 && keyframeIndex < tracks.scale.size()) {
+        tracks.scale[keyframeIndex].value = value;
+    }
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+void GeoOverlayModel::updateColorKeyframe(int overlayIndex, const QString& property, int keyframeIndex, const QColor& color) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "fillColor" && keyframeIndex >= 0 && keyframeIndex < tracks.fillColor.size()) {
+        tracks.fillColor[keyframeIndex].color = color;
+    } else if (property == "borderColor" && keyframeIndex >= 0 && keyframeIndex < tracks.borderColor.size()) {
+        tracks.borderColor[keyframeIndex].color = color;
+    }
+
+    QModelIndex modelIndex = createIndex(overlayIndex, 0);
+    emit dataChanged(modelIndex, modelIndex);
+    emit overlayModified(overlayIndex);
+    emit dataModified();
+}
+
+QVariantList GeoOverlayModel::getPropertyKeyframes(int overlayIndex, const QString& property) const {
+    QVariantList result;
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return result;
+
+    const auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "opacity") {
+        for (const auto& kf : tracks.opacity) {
+            result.append(QVariantMap{{"time", kf.timeMs}, {"value", kf.value}});
+        }
+    } else if (property == "extrusion") {
+        for (const auto& kf : tracks.extrusion) {
+            result.append(QVariantMap{{"time", kf.timeMs}, {"value", kf.value}});
+        }
+    } else if (property == "scale") {
+        for (const auto& kf : tracks.scale) {
+            result.append(QVariantMap{{"time", kf.timeMs}, {"value", kf.value}});
+        }
+    } else if (property == "fillColor") {
+        for (const auto& kf : tracks.fillColor) {
+            result.append(QVariantMap{{"time", kf.timeMs}, {"color", kf.color}});
+        }
+    } else if (property == "borderColor") {
+        for (const auto& kf : tracks.borderColor) {
+            result.append(QVariantMap{{"time", kf.timeMs}, {"color", kf.color}});
+        }
+    }
+
+    return result;
+}
+
+int GeoOverlayModel::propertyKeyframeCount(int overlayIndex, const QString& property) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return 0;
+
+    const auto& tracks = m_overlays[overlayIndex].propertyTracks;
+
+    if (property == "opacity") return tracks.opacity.size();
+    if (property == "extrusion") return tracks.extrusion.size();
+    if (property == "scale") return tracks.scale.size();
+    if (property == "fillColor") return tracks.fillColor.size();
+    if (property == "borderColor") return tracks.borderColor.size();
+
+    return 0;
+}
+
+void GeoOverlayModel::setExpanded(int overlayIndex, bool expanded) {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return;
+
+    if (m_overlays[overlayIndex].expanded != expanded) {
+        m_overlays[overlayIndex].expanded = expanded;
+        QModelIndex modelIndex = createIndex(overlayIndex, 0);
+        emit dataChanged(modelIndex, modelIndex, {ExpandedRole});
+    }
+}
+
+bool GeoOverlayModel::isExpanded(int overlayIndex) const {
+    if (overlayIndex < 0 || overlayIndex >= m_overlays.size()) return false;
+    return m_overlays[overlayIndex].expanded;
 }

@@ -73,3 +73,148 @@ OverlayKeyframe OverlayKeyframe::fromJson(const QJsonObject& obj) {
     kf.syncEnumFromInt();
     return kf;
 }
+
+// ============ OverlayPropertyTracks Implementation ============
+
+double OverlayPropertyTracks::interpolateValue(const QVector<PropertyKeyframe>& track,
+                                                double timeMs, double defaultVal) {
+    if (track.isEmpty()) return defaultVal;
+    if (track.size() == 1) return track.first().value;
+
+    // Find surrounding keyframes
+    int beforeIdx = -1;
+    int afterIdx = -1;
+
+    for (int i = 0; i < track.size(); ++i) {
+        if (track[i].timeMs <= timeMs) {
+            beforeIdx = i;
+        }
+        if (track[i].timeMs > timeMs && afterIdx < 0) {
+            afterIdx = i;
+        }
+    }
+
+    // Before first keyframe
+    if (beforeIdx < 0) return track.first().value;
+    // After last keyframe
+    if (afterIdx < 0) return track.last().value;
+
+    // Interpolate
+    const auto& from = track[beforeIdx];
+    const auto& to = track[afterIdx];
+    double duration = to.timeMs - from.timeMs;
+    double progress = (duration > 0) ? (timeMs - from.timeMs) / duration : 0.0;
+
+    // Apply ease in/out
+    progress = Easing::easeInOutQuad(progress);
+
+    return lerp(from.value, to.value, progress);
+}
+
+QColor OverlayPropertyTracks::interpolateColor(const QVector<ColorKeyframe>& track,
+                                                double timeMs, const QColor& defaultVal) {
+    if (track.isEmpty()) return defaultVal;
+    if (track.size() == 1) return track.first().color;
+
+    // Find surrounding keyframes
+    int beforeIdx = -1;
+    int afterIdx = -1;
+
+    for (int i = 0; i < track.size(); ++i) {
+        if (track[i].timeMs <= timeMs) {
+            beforeIdx = i;
+        }
+        if (track[i].timeMs > timeMs && afterIdx < 0) {
+            afterIdx = i;
+        }
+    }
+
+    // Before first keyframe
+    if (beforeIdx < 0) return track.first().color;
+    // After last keyframe
+    if (afterIdx < 0) return track.last().color;
+
+    // Interpolate
+    const auto& from = track[beforeIdx];
+    const auto& to = track[afterIdx];
+    double duration = to.timeMs - from.timeMs;
+    double progress = (duration > 0) ? (timeMs - from.timeMs) / duration : 0.0;
+
+    // Apply ease in/out
+    progress = Easing::easeInOutQuad(progress);
+
+    return lerpColor(from.color, to.color, progress);
+}
+
+void OverlayPropertyTracks::sortAll() {
+    auto sortByTime = [](const PropertyKeyframe& a, const PropertyKeyframe& b) {
+        return a.timeMs < b.timeMs;
+    };
+    auto sortColorByTime = [](const ColorKeyframe& a, const ColorKeyframe& b) {
+        return a.timeMs < b.timeMs;
+    };
+
+    std::sort(opacity.begin(), opacity.end(), sortByTime);
+    std::sort(extrusion.begin(), extrusion.end(), sortByTime);
+    std::sort(scale.begin(), scale.end(), sortByTime);
+    std::sort(fillColor.begin(), fillColor.end(), sortColorByTime);
+    std::sort(borderColor.begin(), borderColor.end(), sortColorByTime);
+}
+
+QJsonObject OverlayPropertyTracks::toJson() const {
+    QJsonObject obj;
+
+    // Helper to serialize property keyframes
+    auto serializeTrack = [](const QVector<PropertyKeyframe>& track) {
+        QJsonArray arr;
+        for (const auto& kf : track) {
+            arr.append(kf.toJson());
+        }
+        return arr;
+    };
+
+    auto serializeColorTrack = [](const QVector<ColorKeyframe>& track) {
+        QJsonArray arr;
+        for (const auto& kf : track) {
+            arr.append(kf.toJson());
+        }
+        return arr;
+    };
+
+    if (!opacity.isEmpty()) obj["opacity"] = serializeTrack(opacity);
+    if (!extrusion.isEmpty()) obj["extrusion"] = serializeTrack(extrusion);
+    if (!scale.isEmpty()) obj["scale"] = serializeTrack(scale);
+    if (!fillColor.isEmpty()) obj["fillColor"] = serializeColorTrack(fillColor);
+    if (!borderColor.isEmpty()) obj["borderColor"] = serializeColorTrack(borderColor);
+
+    return obj;
+}
+
+OverlayPropertyTracks OverlayPropertyTracks::fromJson(const QJsonObject& obj) {
+    OverlayPropertyTracks tracks;
+
+    // Helper to deserialize property keyframes
+    auto deserializeTrack = [](const QJsonArray& arr) {
+        QVector<PropertyKeyframe> track;
+        for (const auto& val : arr) {
+            track.append(PropertyKeyframe::fromJson(val.toObject()));
+        }
+        return track;
+    };
+
+    auto deserializeColorTrack = [](const QJsonArray& arr) {
+        QVector<ColorKeyframe> track;
+        for (const auto& val : arr) {
+            track.append(ColorKeyframe::fromJson(val.toObject()));
+        }
+        return track;
+    };
+
+    if (obj.contains("opacity")) tracks.opacity = deserializeTrack(obj["opacity"].toArray());
+    if (obj.contains("extrusion")) tracks.extrusion = deserializeTrack(obj["extrusion"].toArray());
+    if (obj.contains("scale")) tracks.scale = deserializeTrack(obj["scale"].toArray());
+    if (obj.contains("fillColor")) tracks.fillColor = deserializeColorTrack(obj["fillColor"].toArray());
+    if (obj.contains("borderColor")) tracks.borderColor = deserializeColorTrack(obj["borderColor"].toArray());
+
+    return tracks;
+}

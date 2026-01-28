@@ -126,7 +126,35 @@ Item {
     // Track heights
     property real cameraTrackHeight: 50
     property real overlayTrackHeight: 40
-    property real totalTracksHeight: cameraTrackHeight + (GeoOverlays ? GeoOverlays.count * overlayTrackHeight : 0)
+    property real propertySubTrackHeight: 20  // Height of each property sub-track
+    property int propertyTrackCount: 5  // opacity, extrusion, scale, fillColor, borderColor
+
+    // Calculate total height including expanded overlays
+    function calculateTotalTracksHeight() {
+        var height = cameraTrackHeight
+        if (GeoOverlays) {
+            for (var i = 0; i < GeoOverlays.count; i++) {
+                height += overlayTrackHeight
+                if (GeoOverlays.isExpanded(i)) {
+                    height += propertySubTrackHeight * propertyTrackCount
+                }
+            }
+        }
+        return height
+    }
+    property real totalTracksHeight: calculateTotalTracksHeight()
+
+    // Calculate Y position for an overlay track
+    function getOverlayTrackY(overlayIndex) {
+        var y = cameraTrackHeight
+        for (var i = 0; i < overlayIndex; i++) {
+            y += overlayTrackHeight
+            if (GeoOverlays && GeoOverlays.isExpanded(i)) {
+                y += propertySubTrackHeight * propertyTrackCount
+            }
+        }
+        return y
+    }
 
     // Timeline content
     Flickable {
@@ -315,41 +343,69 @@ Item {
         Repeater {
             model: GeoOverlays
 
-            Rectangle {
-                id: overlayTrackRow
+            Item {
+                id: overlayTrackContainer
                 x: 0
-                y: cameraTrackHeight + index * overlayTrackHeight
+                y: getOverlayTrackY(index)
                 width: timelineFlickable.contentWidth
-                height: overlayTrackHeight
-                color: GeoOverlays.selectedIndex === index
-                       ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
-                       : (index % 2 === 0 ? "#1a2a3a" : "#152535")
-                border.color: GeoOverlays.selectedIndex === index ? Theme.primaryColor : "transparent"
-                border.width: GeoOverlays.selectedIndex === index ? 1 : 0
+                height: overlayTrackHeight + (model.expanded ? propertySubTrackHeight * propertyTrackCount : 0)
 
                 property int overlayIdx: index
-
-                // Click to select this overlay
-                MouseArea {
-                    anchors.fill: parent
-                    z: 0
-                    onClicked: GeoOverlays.setSelectedIndex(index)
-                }
-                // Store model values in properties for stable bindings
+                property bool isExpanded: model.expanded || false
                 property real trackStartTime: model.startTime
                 property real trackEndTime: model.endTime
                 property real trackFadeIn: model.fadeInDuration || 0
                 property real trackFadeOut: model.fadeOutDuration || 0
 
-                // Track label - integrated like Camera label
-                Text {
-                    x: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: model.name
-                    color: Theme.textColorDim
-                    font.pixelSize: 10
-                    z: 1
-                }
+                // Main overlay track row
+                Rectangle {
+                    id: overlayTrackRow
+                    width: parent.width
+                    height: overlayTrackHeight
+                    color: GeoOverlays.selectedIndex === index
+                           ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                           : (index % 2 === 0 ? "#1a2a3a" : "#152535")
+                    border.color: GeoOverlays.selectedIndex === index ? Theme.primaryColor : "transparent"
+                    border.width: GeoOverlays.selectedIndex === index ? 1 : 0
+
+                    // Click to select this overlay
+                    MouseArea {
+                        anchors.fill: parent
+                        z: 0
+                        onClicked: GeoOverlays.setSelectedIndex(index)
+                    }
+
+                    // Expand/collapse button
+                    Text {
+                        x: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: overlayTrackContainer.isExpanded ? "▼" : "▶"
+                        color: expandMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
+                        font.pixelSize: 8
+                        z: 10
+
+                        MouseArea {
+                            id: expandMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                GeoOverlays.setExpanded(index, !overlayTrackContainer.isExpanded)
+                                totalTracksHeight = calculateTotalTracksHeight()
+                            }
+                        }
+                    }
+
+                    // Track label
+                    Text {
+                        x: 18
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: model.name
+                        color: Theme.textColorDim
+                        font.pixelSize: 10
+                        z: 1
+                    }
 
                 // Track bar - positioned in timeline coordinates
                 Rectangle {
@@ -506,25 +562,96 @@ Item {
                     }
                 }
 
-                // Delete button
-                Text {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "×"
-                    color: delMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
-                    font.pixelSize: 14
-                    z: 20
-                    MouseArea {
-                        id: delMouse
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: GeoOverlays.removeOverlay(overlayIdx)
+                    // Delete button
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "×"
+                        color: delMouse.containsMouse ? Theme.primaryColor : Theme.textColorDim
+                        font.pixelSize: 14
+                        z: 20
+                        MouseArea {
+                            id: delMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: GeoOverlays.removeOverlay(overlayIdx)
+                        }
+                    }
+                }  // End overlayTrackRow
+
+                // Property sub-tracks (shown when expanded)
+                Column {
+                    visible: overlayTrackContainer.isExpanded
+                    y: overlayTrackHeight
+                    width: parent.width
+
+                    // Opacity track
+                    PropertySubTrack {
+                        width: parent.width
+                        height: propertySubTrackHeight
+                        propertyName: "Opacity"
+                        propertyKey: "opacity"
+                        overlayIndex: overlayTrackContainer.overlayIdx
+                        trackColor: "#4CAF50"
+                        minValue: 0
+                        maxValue: 1
+                        pixelsPerSecond: root.pixelsPerSecond
+                    }
+
+                    // Extrusion track
+                    PropertySubTrack {
+                        width: parent.width
+                        height: propertySubTrackHeight
+                        propertyName: "Extrusion"
+                        propertyKey: "extrusion"
+                        overlayIndex: overlayTrackContainer.overlayIdx
+                        trackColor: "#2196F3"
+                        minValue: 0
+                        maxValue: 100
+                        pixelsPerSecond: root.pixelsPerSecond
+                    }
+
+                    // Scale track
+                    PropertySubTrack {
+                        width: parent.width
+                        height: propertySubTrackHeight
+                        propertyName: "Scale"
+                        propertyKey: "scale"
+                        overlayIndex: overlayTrackContainer.overlayIdx
+                        trackColor: "#FF9800"
+                        minValue: 0.5
+                        maxValue: 2.0
+                        pixelsPerSecond: root.pixelsPerSecond
+                    }
+
+                    // Fill Color track
+                    PropertySubTrack {
+                        width: parent.width
+                        height: propertySubTrackHeight
+                        propertyName: "Fill"
+                        propertyKey: "fillColor"
+                        overlayIndex: overlayTrackContainer.overlayIdx
+                        trackColor: "#E91E63"
+                        isColorTrack: true
+                        pixelsPerSecond: root.pixelsPerSecond
+                    }
+
+                    // Border Color track
+                    PropertySubTrack {
+                        width: parent.width
+                        height: propertySubTrackHeight
+                        propertyName: "Border"
+                        propertyKey: "borderColor"
+                        overlayIndex: overlayTrackContainer.overlayIdx
+                        trackColor: "#9C27B0"
+                        isColorTrack: true
+                        pixelsPerSecond: root.pixelsPerSecond
                     }
                 }
-            }
+            }  // End overlayTrackContainer
         }
 
         // Playhead - spans all tracks
