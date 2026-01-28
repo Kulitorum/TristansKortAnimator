@@ -15,6 +15,7 @@ class GeoOverlayModel : public QAbstractListModel {
     Q_OBJECT
 
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(int selectedIndex READ selectedIndex WRITE setSelectedIndex NOTIFY selectedIndexChanged)
 
 public:
     enum GeoOverlayRoles {
@@ -101,12 +102,18 @@ public:
     int count() const { return m_overlays.size(); }
     const QVector<GeoOverlay>& overlays() const { return m_overlays; }
 
+    // Selection
+    int selectedIndex() const { return m_selectedIndex; }
+    Q_INVOKABLE void setSelectedIndex(int index);
+    Q_INVOKABLE QVariantMap selectedOverlay() const;
+
     // Serialization
     QJsonArray toJson() const;
     void fromJson(const QJsonArray& array);
 
 signals:
     void countChanged();
+    void selectedIndexChanged();
     void overlayModified(int index);
     void dataModified();
     void keyframeAdded(int overlayIndex, int keyframeIndex);
@@ -128,4 +135,5 @@ private:
     GeoJsonParser* m_geoJson = nullptr;
     CityBoundaryFetcher* m_boundaryFetcher = nullptr;
     double m_currentTime = 0.0;
+    int m_selectedIndex = -1;
 };

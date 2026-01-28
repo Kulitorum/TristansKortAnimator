@@ -321,9 +321,20 @@ Item {
                 y: cameraTrackHeight + index * overlayTrackHeight
                 width: timelineFlickable.contentWidth
                 height: overlayTrackHeight
-                color: index % 2 === 0 ? "#1a2a3a" : "#152535"
+                color: GeoOverlays.selectedIndex === index
+                       ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                       : (index % 2 === 0 ? "#1a2a3a" : "#152535")
+                border.color: GeoOverlays.selectedIndex === index ? Theme.primaryColor : "transparent"
+                border.width: GeoOverlays.selectedIndex === index ? 1 : 0
 
                 property int overlayIdx: index
+
+                // Click to select this overlay
+                MouseArea {
+                    anchors.fill: parent
+                    z: 0
+                    onClicked: GeoOverlays.setSelectedIndex(index)
+                }
                 // Store model values in properties for stable bindings
                 property real trackStartTime: model.startTime
                 property real trackEndTime: model.endTime

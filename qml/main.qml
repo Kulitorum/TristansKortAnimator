@@ -498,15 +498,116 @@ ApplicationWindow {
                 }
             }
 
-            // Right panel - Keyframe properties
+            // Right panel - Properties (Keyframe or Overlay)
             Rectangle {
                 SplitView.preferredWidth: 300
                 SplitView.minimumWidth: Theme.panelMinWidth
                 SplitView.maximumWidth: Theme.panelMaxWidth
                 color: Theme.surfaceColor
 
-                KeyframePanel {
+                ColumnLayout {
                     anchors.fill: parent
+                    spacing: 0
+
+                    // Tab bar to switch between Keyframe and Overlay properties
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        color: Theme.surfaceColorLight
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 4
+
+                            // Keyframe tab
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 4
+                                color: propertiesStack.currentIndex === 0 ? Theme.primaryColor : "transparent"
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("Keyframe")
+                                    color: propertiesStack.currentIndex === 0 ? "white" : Theme.textColorDim
+                                    font.bold: propertiesStack.currentIndex === 0
+                                    font.pixelSize: 12
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: propertiesStack.currentIndex = 0
+                                }
+                            }
+
+                            // Overlay tab
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 4
+                                color: propertiesStack.currentIndex === 1 ? Theme.primaryColor : "transparent"
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 4
+
+                                    Text {
+                                        text: qsTr("Overlay")
+                                        color: propertiesStack.currentIndex === 1 ? "white" : Theme.textColorDim
+                                        font.bold: propertiesStack.currentIndex === 1
+                                        font.pixelSize: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    // Indicator dot when overlay is selected
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: Theme.keyframeColor
+                                        visible: GeoOverlays && GeoOverlays.selectedIndex >= 0
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: propertiesStack.currentIndex = 1
+                                }
+                            }
+                        }
+                    }
+
+                    // Stacked panels
+                    StackLayout {
+                        id: propertiesStack
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        currentIndex: 0
+
+                        KeyframePanel {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                        }
+
+                        OverlayPropertiesPanel {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                        }
+                    }
+                }
+
+                // Auto-switch to overlay tab when an overlay is selected
+                Connections {
+                    target: GeoOverlays
+                    function onSelectedIndexChanged() {
+                        if (GeoOverlays.selectedIndex >= 0) {
+                            propertiesStack.currentIndex = 1
+                        }
+                    }
                 }
             }
         }

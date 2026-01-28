@@ -733,3 +733,20 @@ void GeoOverlayModel::loadCityBoundaryFromCache(GeoOverlay& overlay) {
         qDebug() << "Loaded cached boundary for" << overlay.name << "with" << overlay.polygons.size() << "polygons";
     }
 }
+
+void GeoOverlayModel::setSelectedIndex(int index) {
+    if (index < -1 || index >= m_overlays.size()) {
+        index = -1;
+    }
+    if (m_selectedIndex != index) {
+        m_selectedIndex = index;
+        emit selectedIndexChanged();
+    }
+}
+
+QVariantMap GeoOverlayModel::selectedOverlay() const {
+    if (m_selectedIndex < 0 || m_selectedIndex >= m_overlays.size()) {
+        return QVariantMap();
+    }
+    return getOverlay(m_selectedIndex);
+}
