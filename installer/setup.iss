@@ -40,7 +40,7 @@ Type: filesandordirs; Name: "{app}\*"
 
 [Files]
 ; MSVC Runtime redistributable
-Source: "{#MsvcRedist_Dir}\vcredist_{#TargetArch}.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
+Source: "{#MsvcRedist_Dir}\vc_redist.{#TargetArch}.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
 
 ; Main executable
 Source: "{#AppBuildDir}\{#TargetName}.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -67,7 +67,7 @@ Source: "{#AppBuildDir}\vectorimageformats\*"; DestDir: "{app}\vectorimageformat
 
 [Run]
 ; Install VC++ Runtime if needed
-Filename: "{tmp}\vcredist_{#TargetArch}.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "{cm:installVcRuntime}"; Check: VCRedistNeedsInstall
+Filename: "{tmp}\vc_redist.{#TargetArch}.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "{cm:installVcRuntime}"; Check: VCRedistNeedsInstall
 ; Launch application after install (optional)
 Filename: "{app}\{#TargetName}.exe"; Description: "Launch {#TargetProduct}"; Flags: nowait postinstall skipifsilent unchecked
 
