@@ -418,7 +418,7 @@ ApplicationWindow {
                 SplitView.preferredWidth: 280
                 SplitView.minimumWidth: Theme.panelMinWidth
                 SplitView.maximumWidth: Theme.panelMaxWidth
-                color: Theme.surfaceColor
+                color: Theme.backgroundColor
 
                 OverlayPanel {
                     anchors.fill: parent
@@ -493,7 +493,14 @@ ApplicationWindow {
                     color: Theme.timelineBackground
 
                     Timeline {
+                        id: timelineView
                         anchors.fill: parent
+
+                        onEffectSelected: (overlayIndex, effectIndex) => {
+                            console.log("Effect selected signal received:", overlayIndex, effectIndex)
+                            effectPanel.selectEffect(overlayIndex, effectIndex)
+                            propertiesStack.currentIndex = 2
+                        }
                     }
                 }
             }
@@ -503,7 +510,7 @@ ApplicationWindow {
                 SplitView.preferredWidth: 300
                 SplitView.minimumWidth: Theme.panelMinWidth
                 SplitView.maximumWidth: Theme.panelMaxWidth
-                color: Theme.surfaceColor
+                color: Theme.backgroundColor
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -513,30 +520,39 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
-                        color: Theme.surfaceColorLight
+                        color: Theme.headerColor
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: Theme.borderColor
+                        }
 
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: 4
-                            spacing: 4
+                            spacing: 2
 
                             // Keyframe tab
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: propertiesStack.currentIndex === 0 ? Theme.primaryColor : "transparent"
+                                color: propertiesStack.currentIndex === 0 ? Theme.primaryColor : (kfTabHover.containsMouse ? Theme.surfaceColorLight : "transparent")
 
                                 Text {
                                     anchors.centerIn: parent
                                     text: qsTr("Keyframe")
-                                    color: propertiesStack.currentIndex === 0 ? "white" : Theme.textColorDim
-                                    font.bold: propertiesStack.currentIndex === 0
-                                    font.pixelSize: 12
+                                    color: propertiesStack.currentIndex === 0 ? "#ffffff" : Theme.textColorDim
+                                    font.pixelSize: 11
+                                    font.weight: propertiesStack.currentIndex === 0 ? Font.Medium : Font.Normal
                                 }
 
                                 MouseArea {
+                                    id: kfTabHover
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: propertiesStack.currentIndex = 0
                                 }
@@ -547,7 +563,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 radius: 4
-                                color: propertiesStack.currentIndex === 1 ? Theme.primaryColor : "transparent"
+                                color: propertiesStack.currentIndex === 1 ? Theme.primaryColor : (ovTabHover.containsMouse ? Theme.surfaceColorLight : "transparent")
 
                                 Row {
                                     anchors.centerIn: parent
@@ -555,27 +571,66 @@ ApplicationWindow {
 
                                     Text {
                                         text: qsTr("Overlay")
-                                        color: propertiesStack.currentIndex === 1 ? "white" : Theme.textColorDim
-                                        font.bold: propertiesStack.currentIndex === 1
-                                        font.pixelSize: 12
+                                        color: propertiesStack.currentIndex === 1 ? "#ffffff" : Theme.textColorDim
+                                        font.pixelSize: 11
+                                        font.weight: propertiesStack.currentIndex === 1 ? Font.Medium : Font.Normal
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
 
-                                    // Indicator dot when overlay is selected
                                     Rectangle {
-                                        width: 8
-                                        height: 8
-                                        radius: 4
-                                        color: Theme.keyframeColor
-                                        visible: GeoOverlays && GeoOverlays.selectedIndex >= 0
+                                        width: 6
+                                        height: 6
+                                        radius: 3
+                                        color: Theme.primaryColor
+                                        visible: GeoOverlays && GeoOverlays.selectedIndex >= 0 && propertiesStack.currentIndex !== 1
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
                                 }
 
                                 MouseArea {
+                                    id: ovTabHover
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: propertiesStack.currentIndex = 1
+                                }
+                            }
+
+                            // Effect tab
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                radius: 4
+                                color: propertiesStack.currentIndex === 2 ? Theme.primaryColor : (efTabHover.containsMouse ? Theme.surfaceColorLight : "transparent")
+
+                                Row {
+                                    anchors.centerIn: parent
+                                    spacing: 4
+
+                                    Text {
+                                        text: qsTr("Effect")
+                                        color: propertiesStack.currentIndex === 2 ? "#ffffff" : Theme.textColorDim
+                                        font.pixelSize: 11
+                                        font.weight: propertiesStack.currentIndex === 2 ? Font.Medium : Font.Normal
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    Rectangle {
+                                        width: 6
+                                        height: 6
+                                        radius: 3
+                                        color: Theme.warningColor
+                                        visible: effectPanel.hasSelection && propertiesStack.currentIndex !== 2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: efTabHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: propertiesStack.currentIndex = 2
                                 }
                             }
                         }
@@ -594,6 +649,17 @@ ApplicationWindow {
                         }
 
                         OverlayPropertiesPanel {
+                            id: overlayPanel
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            onAddEffectRequested: (effectType) => {
+                                // Switch to effect tab when effect is added
+                                propertiesStack.currentIndex = 2
+                            }
+                        }
+
+                        EffectPropertiesPanel {
+                            id: effectPanel
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                         }

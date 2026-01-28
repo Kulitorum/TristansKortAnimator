@@ -3,10 +3,17 @@
 #include <QObject>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QVariantList>
+#include <QVector>
 
 class KeyframeModel;
 class Interpolator;
 class MapCamera;
+
+struct SpeedPoint {
+    double time;   // milliseconds
+    double speed;  // 0.0 to 1.0 (0 = stopped, 0.5 = normal, 1.0 = 2x speed)
+};
 
 class AnimationController : public QObject {
     Q_OBJECT
@@ -19,6 +26,7 @@ class AnimationController : public QObject {
     Q_PROPERTY(int currentKeyframeIndex READ currentKeyframeIndex NOTIFY currentKeyframeIndexChanged)
     Q_PROPERTY(double explicitDuration READ explicitDuration WRITE setExplicitDuration NOTIFY explicitDurationChanged)
     Q_PROPERTY(bool useExplicitDuration READ useExplicitDuration WRITE setUseExplicitDuration NOTIFY useExplicitDurationChanged)
+    Q_PROPERTY(bool useSpeedCurve READ useSpeedCurve WRITE setUseSpeedCurve NOTIFY useSpeedCurveChanged)
 
 public:
     explicit AnimationController(QObject* parent = nullptr);
@@ -35,6 +43,15 @@ public:
     int currentKeyframeIndex() const { return m_currentKeyframeIndex; }
     double explicitDuration() const { return m_explicitDuration; }
     bool useExplicitDuration() const { return m_useExplicitDuration; }
+    bool useSpeedCurve() const { return m_useSpeedCurve; }
+
+    // Speed curve methods
+    Q_INVOKABLE void addSpeedPoint(double timeMs, double speed);
+    Q_INVOKABLE void removeSpeedPoint(int index);
+    Q_INVOKABLE void updateSpeedPoint(int index, double timeMs, double speed);
+    Q_INVOKABLE void clearSpeedCurve();
+    Q_INVOKABLE QVariantList getSpeedCurve() const;
+    Q_INVOKABLE double getSpeedAtTime(double timeMs) const;
 
 public slots:
     void play();
@@ -50,6 +67,7 @@ public slots:
     void stepBackward();  // Go to previous keyframe
     void setExplicitDuration(double durationMs);
     void setUseExplicitDuration(bool use);
+    void setUseSpeedCurve(bool use);
 
 signals:
     void playingChanged();
@@ -62,6 +80,8 @@ signals:
     void frameRendered(double timeMs);
     void explicitDurationChanged();
     void useExplicitDurationChanged();
+    void useSpeedCurveChanged();
+    void speedCurveChanged();
 
 private slots:
     void tick();
@@ -85,6 +105,8 @@ private:
     int m_currentKeyframeIndex = 0;
     double m_explicitDuration = 60000.0;  // Default 60 seconds
     bool m_useExplicitDuration = true;    // Default to explicit duration mode
+    bool m_useSpeedCurve = true;          // Use speed curve for playback
+    QVector<SpeedPoint> m_speedCurve;     // Speed curve points
 
     static constexpr int TICK_INTERVAL_MS = 16;  // ~60fps preview
 };

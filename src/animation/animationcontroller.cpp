@@ -2,6 +2,7 @@
 #include "keyframemodel.h"
 #include "interpolator.h"
 #include "../map/mapcamera.h"
+#include <algorithm>
 
 AnimationController::AnimationController(QObject* parent)
     : QObject(parent)
@@ -10,6 +11,12 @@ AnimationController::AnimationController(QObject* parent)
 {
     m_timer->setInterval(TICK_INTERVAL_MS);
     connect(m_timer, &QTimer::timeout, this, &AnimationController::tick);
+
+    // Initialize with default speed curve point
+    m_speedCurve.append(SpeedPoint{0, 0.5});  // Normal speed at t=0
+
+    // Set interpolator to linear mode since speed curve is enabled by default
+    m_interpolator->setLinearMode(m_useSpeedCurve);
 }
 
 void AnimationController::setKeyframeModel(KeyframeModel* model) {
@@ -134,6 +141,87 @@ void AnimationController::setLooping(bool loop) {
     }
 }
 
+void AnimationController::setUseSpeedCurve(bool use) {
+    if (m_useSpeedCurve != use) {
+        m_useSpeedCurve = use;
+        // When speed curve is enabled, use linear interpolation (speed curve handles easing)
+        if (m_interpolator) {
+            m_interpolator->setLinearMode(use);
+        }
+        emit useSpeedCurveChanged();
+    }
+}
+
+void AnimationController::addSpeedPoint(double timeMs, double speed) {
+    SpeedPoint point{timeMs, qBound(0.0, speed, 1.0)};
+
+    // Find insertion position to keep sorted by time
+    int insertIdx = 0;
+    for (int i = 0; i < m_speedCurve.size(); i++) {
+        if (m_speedCurve[i].time < timeMs) {
+            insertIdx = i + 1;
+        } else {
+            break;
+        }
+    }
+    m_speedCurve.insert(insertIdx, point);
+    emit speedCurveChanged();
+}
+
+void AnimationController::removeSpeedPoint(int index) {
+    if (index >= 0 && index < m_speedCurve.size() && m_speedCurve.size() > 1) {
+        m_speedCurve.removeAt(index);
+        emit speedCurveChanged();
+    }
+}
+
+void AnimationController::updateSpeedPoint(int index, double timeMs, double speed) {
+    if (index >= 0 && index < m_speedCurve.size()) {
+        m_speedCurve[index].time = qMax(0.0, timeMs);
+        m_speedCurve[index].speed = qBound(0.0, speed, 1.0);
+        // Re-sort by time
+        std::sort(m_speedCurve.begin(), m_speedCurve.end(),
+                  [](const SpeedPoint& a, const SpeedPoint& b) { return a.time < b.time; });
+        emit speedCurveChanged();
+    }
+}
+
+void AnimationController::clearSpeedCurve() {
+    m_speedCurve.clear();
+    m_speedCurve.append(SpeedPoint{0, 0.5});  // Default: normal speed
+    emit speedCurveChanged();
+}
+
+QVariantList AnimationController::getSpeedCurve() const {
+    QVariantList list;
+    for (const auto& point : m_speedCurve) {
+        QVariantMap map;
+        map["time"] = point.time;
+        map["speed"] = point.speed;
+        list.append(map);
+    }
+    return list;
+}
+
+double AnimationController::getSpeedAtTime(double timeMs) const {
+    if (m_speedCurve.isEmpty()) return 0.5;  // Default normal speed
+    if (m_speedCurve.size() == 1) return m_speedCurve[0].speed;
+
+    // Find surrounding points and interpolate
+    for (int i = 0; i < m_speedCurve.size() - 1; i++) {
+        if (timeMs >= m_speedCurve[i].time && timeMs <= m_speedCurve[i+1].time) {
+            double duration = m_speedCurve[i+1].time - m_speedCurve[i].time;
+            if (duration <= 0) return m_speedCurve[i].speed;
+            double t = (timeMs - m_speedCurve[i].time) / duration;
+            return m_speedCurve[i].speed + t * (m_speedCurve[i+1].speed - m_speedCurve[i].speed);
+        }
+    }
+
+    // Before first point or after last point
+    if (timeMs < m_speedCurve.first().time) return m_speedCurve.first().speed;
+    return m_speedCurve.last().speed;
+}
+
 void AnimationController::stepForward() {
     if (!m_keyframes || m_keyframes->count() == 0) return;
 
@@ -167,8 +255,16 @@ void AnimationController::tick() {
     qint64 deltaMs = currentTick - m_lastTickTime;
     m_lastTickTime = currentTick;
 
+    // Get effective speed multiplier
+    double speedMultiplier = m_playbackSpeed;
+    if (m_useSpeedCurve && !m_speedCurve.isEmpty()) {
+        // Speed curve: 0 = stopped, 0.5 = normal (1x), 1.0 = fast (2x)
+        double curveSpeed = getSpeedAtTime(m_currentTimeMs);
+        speedMultiplier *= curveSpeed * 2.0;  // Map 0-1 to 0-2x speed
+    }
+
     // Advance time
-    double newTime = m_currentTimeMs + deltaMs * m_playbackSpeed;
+    double newTime = m_currentTimeMs + deltaMs * speedMultiplier;
 
     // Get both durations
     double keyframeDuration = m_keyframes ? m_keyframes->totalDuration() : 0.0;

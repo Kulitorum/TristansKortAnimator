@@ -8,8 +8,8 @@ Interpolator::Interpolator(QObject* parent)
 }
 
 CameraState Interpolator::interpolate(const Keyframe& from, const Keyframe& to, double t) {
-    // Apply altitude-adaptive easing combined with per-keyframe smoothness
-    double easedT = adaptiveEaseInOut(t, from.easing, from.altitude, to.altitude);
+    // Apply easing unless in linear mode (speed curve handles timing)
+    double easedT = m_linearMode ? t : adaptiveEaseInOut(t, from.easing, from.altitude, to.altitude);
 
     CameraState state;
 

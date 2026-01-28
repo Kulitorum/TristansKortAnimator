@@ -5,19 +5,17 @@ import TristansKortAnimator
 
 Rectangle {
     id: keyframePanel
-    color: Theme.surfaceColor
+    color: Theme.backgroundColor
 
     property int selectedIndex: Keyframes ? Keyframes.currentIndex : -1
     property bool hasKeyframe: Keyframes && selectedIndex >= 0 && selectedIndex < Keyframes.count
 
-    // Helper functions to get keyframe data
     function getVal(prop, defaultVal) {
         if (!hasKeyframe) return defaultVal
         var kf = Keyframes.getKeyframe(selectedIndex)
         return kf ? kf[prop] : defaultVal
     }
 
-    // Refresh sliders when data changes
     function refreshSliders() {
         if (hasKeyframe) {
             var kf = Keyframes.getKeyframe(selectedIndex)
@@ -27,13 +25,12 @@ Rectangle {
                 zoomSlider.value = kf.zoom
                 bearingSlider.value = kf.bearing
                 tiltSlider.value = kf.tilt
-                timeSpinBox.value = kf.time / 1000.0  // Convert ms to seconds
+                timeSpinBox.value = kf.time / 1000.0
                 easingSlider.value = kf.easing !== undefined ? kf.easing : 0.5
             }
         }
     }
 
-    // Format time as mm:ss.s
     function formatTime(seconds) {
         var mins = Math.floor(seconds / 60)
         var secs = seconds % 60
@@ -56,123 +53,210 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacingNormal
-        spacing: Theme.spacingNormal
+        spacing: 0
 
         // Header
-        RowLayout {
-            Layout.fillWidth: true
-            Text {
-                text: qsTr("Keyframe Properties")
-                color: Theme.textColor
-                font.pixelSize: Theme.fontSizeLarge
-                font.bold: true
-            }
-            Item { Layout.fillWidth: true }
-            Text {
-                visible: hasKeyframe
-                text: qsTr("#%1 of %2").arg(selectedIndex + 1).arg(Keyframes ? Keyframes.count : 0)
-                color: Theme.textColorDim
-                font.pixelSize: Theme.fontSizeSmall
-            }
-        }
-
         Rectangle {
             Layout.fillWidth: true
-            height: 1
-            color: Theme.borderColor
+            height: 40
+            color: Theme.headerColor
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: Theme.borderColor
+            }
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+
+                Text {
+                    text: qsTr("Keyframe")
+                    color: Theme.textColor
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    visible: hasKeyframe
+                    text: qsTr("#%1 of %2").arg(selectedIndex + 1).arg(Keyframes ? Keyframes.count : 0)
+                    color: Theme.textColorDim
+                    font.pixelSize: 11
+                }
+            }
         }
 
-        // No keyframe selected message
-        Text {
-            visible: !hasKeyframe
-            text: qsTr("No keyframe selected.\nAdd a keyframe to edit its properties.")
-            color: Theme.textColorDim
-            wrapMode: Text.WordWrap
+        // No keyframe message
+        Item {
             Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: !hasKeyframe
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                spacing: 12
+
+                Text {
+                    text: qsTr("No keyframe selected")
+                    color: Theme.textColorDim
+                    font.pixelSize: 12
+                    Layout.alignment: Qt.AlignHCenter
+                }
+
+                Text {
+                    text: qsTr("Click a keyframe marker in the\ntimeline or press K to add one")
+                    color: Theme.textColorMuted
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignHCenter
+                }
+            }
         }
 
         // Keyframe properties
-        ScrollView {
+        Flickable {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: hasKeyframe
+            contentHeight: propsColumn.height
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
 
             ColumnLayout {
+                id: propsColumn
                 width: parent.width
-                spacing: Theme.spacingNormal
+                spacing: 0
 
                 // Time section
-                GroupBox {
-                    title: qsTr("Timing")
+                Rectangle {
                     Layout.fillWidth: true
+                    height: timeContent.height + 24
+                    color: Theme.surfaceColor
 
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: Theme.spacingSmall
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: Theme.borderColor
+                        opacity: 0.5
+                    }
+
+                    ColumnLayout {
+                        id: timeContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
 
                         Text {
-                            text: qsTr("Time:")
+                            text: qsTr("Timing")
                             color: Theme.textColorDim
+                            font.pixelSize: 10
+                            font.weight: Font.Medium
+                            font.capitalization: Font.AllUppercase
                         }
 
-                        SpinBox {
-                            id: timeSpinBox
+                        RowLayout {
                             Layout.fillWidth: true
-                            from: 0
-                            to: 36000  // 10 hours max
-                            stepSize: 1
-                            editable: true
+                            spacing: 8
 
-                            property real realValue: value
-
-                            textFromValue: function(value, locale) {
-                                return formatTime(value)
+                            Text {
+                                text: qsTr("Time:")
+                                color: Theme.textColorDim
+                                font.pixelSize: 11
                             }
 
-                            valueFromText: function(text, locale) {
-                                // Parse mm:ss.s format
-                                var parts = text.split(":")
-                                if (parts.length === 2) {
-                                    var mins = parseInt(parts[0]) || 0
-                                    var secs = parseFloat(parts[1]) || 0
-                                    return mins * 60 + secs
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 28
+                                color: Theme.surfaceColorLight
+                                radius: 4
+                                border.color: Theme.borderColor
+
+                                TextInput {
+                                    anchors.fill: parent
+                                    anchors.margins: 6
+                                    text: formatTime(timeSpinBox.value)
+                                    color: Theme.textColor
+                                    font.pixelSize: 12
+                                    font.family: "Consolas"
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    selectByMouse: true
+
+                                    property real realValue: timeSpinBox.value
+
+                                    onEditingFinished: {
+                                        var parts = text.split(":")
+                                        var newValue = 0
+                                        if (parts.length === 2) {
+                                            newValue = parseInt(parts[0]) * 60 + parseFloat(parts[1])
+                                        } else {
+                                            newValue = parseFloat(text) || 0
+                                        }
+                                        Keyframes.setKeyframeTime(selectedIndex, newValue * 1000.0)
+                                    }
                                 }
-                                return parseFloat(text) || 0
                             }
 
-                            onValueModified: {
-                                // Convert seconds to milliseconds and update keyframe
-                                Keyframes.setKeyframeTime(selectedIndex, value * 1000.0)
+                            SpinBox {
+                                id: timeSpinBox
+                                visible: false
+                                from: 0
+                                to: 36000
+                                value: 0
                             }
-                        }
 
-                        Text {
-                            text: qsTr("sec")
-                            color: Theme.textColorDim
+                            Text {
+                                text: qsTr("sec")
+                                color: Theme.textColorDim
+                                font.pixelSize: 11
+                            }
                         }
                     }
                 }
 
-                // Easing section - controls transition smoothness FROM this keyframe
-                GroupBox {
-                    title: qsTr("Easing (transition out)")
+                // Easing section
+                Rectangle {
                     Layout.fillWidth: true
+                    height: easingContent.height + 24
+                    color: Theme.surfaceColorAlt
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: Theme.borderColor
+                        opacity: 0.5
+                    }
 
                     ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Theme.spacingSmall
+                        id: easingContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
 
                         RowLayout {
+                            Layout.fillWidth: true
                             Text {
-                                text: qsTr("Smoothness:")
+                                text: qsTr("Easing")
                                 color: Theme.textColorDim
+                                font.pixelSize: 10
+                                font.weight: Font.Medium
+                                font.capitalization: Font.AllUppercase
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 text: Math.round(easingSlider.value * 100) + "%"
                                 color: Theme.textColor
+                                font.pixelSize: 11
                             }
                         }
 
@@ -183,7 +267,6 @@ Rectangle {
                             to: 1.0
                             value: 0.5
                             stepSize: 0.05
-                            live: true
                             onValueChanged: {
                                 if (pressed) {
                                     Keyframes.updateKeyframe(selectedIndex, {"easing": value})
@@ -192,46 +275,66 @@ Rectangle {
                         }
 
                         RowLayout {
-                            spacing: Theme.spacingSmall
+                            Layout.fillWidth: true
                             Text {
                                 text: qsTr("Snappy")
-                                color: Theme.textColorDim
-                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.textColorMuted
+                                font.pixelSize: 9
                             }
                             Item { Layout.fillWidth: true }
                             Text {
                                 text: qsTr("Smooth")
-                                color: Theme.textColorDim
-                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.textColorMuted
+                                font.pixelSize: 9
                             }
                         }
                     }
                 }
 
                 // Position section
-                GroupBox {
-                    title: qsTr("Position")
+                Rectangle {
                     Layout.fillWidth: true
+                    height: posContent.height + 24
+                    color: Theme.surfaceColor
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: Theme.borderColor
+                        opacity: 0.5
+                    }
 
                     ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Theme.spacingSmall
+                        id: posContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Text {
+                            text: qsTr("Position")
+                            color: Theme.textColorDim
+                            font.pixelSize: 10
+                            font.weight: Font.Medium
+                            font.capitalization: Font.AllUppercase
+                        }
 
                         // Latitude
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             RowLayout {
-                                Text { text: qsTr("Latitude:"); color: Theme.textColorDim }
+                                Text { text: qsTr("Latitude"); color: Theme.textColorDim; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: latSlider.value.toFixed(2); color: Theme.textColor }
+                                Text { text: latSlider.value.toFixed(2); color: Theme.textColor; font.pixelSize: 11; font.family: "Consolas" }
                             }
                             Slider {
                                 id: latSlider
                                 Layout.fillWidth: true
                                 from: -85
                                 to: 85
-                                live: true
                                 onValueChanged: {
                                     if (pressed) {
                                         Keyframes.updateKeyframe(selectedIndex, {"latitude": value})
@@ -244,18 +347,17 @@ Rectangle {
                         // Longitude
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             RowLayout {
-                                Text { text: qsTr("Longitude:"); color: Theme.textColorDim }
+                                Text { text: qsTr("Longitude"); color: Theme.textColorDim; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: lonSlider.value.toFixed(2); color: Theme.textColor }
+                                Text { text: lonSlider.value.toFixed(2); color: Theme.textColor; font.pixelSize: 11; font.family: "Consolas" }
                             }
                             Slider {
                                 id: lonSlider
                                 Layout.fillWidth: true
                                 from: -180
                                 to: 180
-                                live: true
                                 onValueChanged: {
                                     if (pressed) {
                                         Keyframes.updateKeyframe(selectedIndex, {"longitude": value})
@@ -268,18 +370,17 @@ Rectangle {
                         // Zoom
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             RowLayout {
-                                Text { text: qsTr("Zoom:"); color: Theme.textColorDim }
+                                Text { text: qsTr("Zoom"); color: Theme.textColorDim; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: zoomSlider.value.toFixed(1); color: Theme.textColor }
+                                Text { text: zoomSlider.value.toFixed(1); color: Theme.textColor; font.pixelSize: 11; font.family: "Consolas" }
                             }
                             Slider {
                                 id: zoomSlider
                                 Layout.fillWidth: true
                                 from: 1
                                 to: 19
-                                live: true
                                 onValueChanged: {
                                     if (pressed) {
                                         Keyframes.updateKeyframe(selectedIndex, {"zoom": value})
@@ -292,29 +393,41 @@ Rectangle {
                 }
 
                 // Camera section
-                GroupBox {
-                    title: qsTr("Camera")
+                Rectangle {
                     Layout.fillWidth: true
+                    height: camContent.height + 24
+                    color: Theme.surfaceColorAlt
 
                     ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Theme.spacingSmall
+                        id: camContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Text {
+                            text: qsTr("Camera")
+                            color: Theme.textColorDim
+                            font.pixelSize: 10
+                            font.weight: Font.Medium
+                            font.capitalization: Font.AllUppercase
+                        }
 
                         // Bearing
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             RowLayout {
-                                Text { text: qsTr("Bearing:"); color: Theme.textColorDim }
+                                Text { text: qsTr("Bearing"); color: Theme.textColorDim; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: bearingSlider.value.toFixed(0) + "°"; color: Theme.textColor }
+                                Text { text: bearingSlider.value.toFixed(0) + "°"; color: Theme.textColor; font.pixelSize: 11; font.family: "Consolas" }
                             }
                             Slider {
                                 id: bearingSlider
                                 Layout.fillWidth: true
                                 from: 0
                                 to: 360
-                                live: true
                                 onValueChanged: {
                                     if (pressed) {
                                         Keyframes.updateKeyframe(selectedIndex, {"bearing": value})
@@ -327,18 +440,17 @@ Rectangle {
                         // Tilt
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: 4
                             RowLayout {
-                                Text { text: qsTr("Tilt:"); color: Theme.textColorDim }
+                                Text { text: qsTr("Tilt"); color: Theme.textColorDim; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Text { text: tiltSlider.value.toFixed(0) + "°"; color: Theme.textColor }
+                                Text { text: tiltSlider.value.toFixed(0) + "°"; color: Theme.textColor; font.pixelSize: 11; font.family: "Consolas" }
                             }
                             Slider {
                                 id: tiltSlider
                                 Layout.fillWidth: true
                                 from: 0
                                 to: 60
-                                live: true
                                 onValueChanged: {
                                     if (pressed) {
                                         Keyframes.updateKeyframe(selectedIndex, {"tilt": value})
@@ -351,61 +463,108 @@ Rectangle {
                 }
 
                 // Actions
-                RowLayout {
+                Rectangle {
                     Layout.fillWidth: true
-                    spacing: Theme.spacingSmall
+                    height: actionsContent.height + 24
+                    color: Theme.headerColor
 
-                    Button {
-                        text: qsTr("Go To")
-                        onClicked: MainController.goToKeyframe(selectedIndex)
-                        Layout.fillWidth: true
+                    Rectangle {
+                        anchors.top: parent.top
+                        width: parent.width
+                        height: 1
+                        color: Theme.borderColor
                     }
 
-                    Button {
-                        text: qsTr("Update")
-                        onClicked: {
-                            Keyframes.updateKeyframe(selectedIndex, {
-                                "latitude": Camera.latitude,
-                                "longitude": Camera.longitude,
-                                "zoom": Camera.zoom,
-                                "bearing": Camera.bearing,
-                                "tilt": Camera.tilt
-                            })
+                    ColumnLayout {
+                        id: actionsContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: 4
+                                color: gotoHover.containsMouse ? Theme.primaryColor : Theme.surfaceColorLight
+                                border.color: Theme.primaryColor
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("Go To")
+                                    color: gotoHover.containsMouse ? "#ffffff" : Theme.primaryColor
+                                    font.pixelSize: 11
+                                    font.weight: Font.Medium
+                                }
+
+                                MouseArea {
+                                    id: gotoHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: MainController.goToKeyframe(selectedIndex)
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 32
+                                radius: 4
+                                color: updateHover.containsMouse ? Theme.surfaceColorLight : Theme.surfaceColor
+                                border.color: Theme.borderColor
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: qsTr("Update")
+                                    color: Theme.textColorDim
+                                    font.pixelSize: 11
+                                }
+
+                                MouseArea {
+                                    id: updateHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        Keyframes.updateKeyframe(selectedIndex, {
+                                            "latitude": Camera.latitude,
+                                            "longitude": Camera.longitude,
+                                            "zoom": Camera.zoom,
+                                            "bearing": Camera.bearing,
+                                            "tilt": Camera.tilt
+                                        })
+                                    }
+                                }
+                            }
                         }
-                        Layout.fillWidth: true
-                    }
-                }
 
-                // Reorder and delete
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacingSmall
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 32
+                            radius: 4
+                            color: deleteHover.containsMouse ? Theme.dangerColor : Theme.surfaceColor
+                            border.color: deleteHover.containsMouse ? Theme.dangerColor : Theme.borderColor
 
-                    Button {
-                        text: "↑"
-                        enabled: selectedIndex > 0
-                        onClicked: {
-                            Keyframes.moveKeyframe(selectedIndex, selectedIndex - 1)
-                            Keyframes.setCurrentIndex(selectedIndex - 1)
+                            Text {
+                                anchors.centerIn: parent
+                                text: qsTr("Delete Keyframe")
+                                color: deleteHover.containsMouse ? "#ffffff" : Theme.textColorDim
+                                font.pixelSize: 11
+                            }
+
+                            MouseArea {
+                                id: deleteHover
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Keyframes.removeKeyframe(selectedIndex)
+                            }
                         }
-                        Layout.preferredWidth: 40
-                    }
-
-                    Button {
-                        text: "↓"
-                        enabled: Keyframes && selectedIndex < Keyframes.count - 1
-                        onClicked: {
-                            Keyframes.moveKeyframe(selectedIndex, selectedIndex + 1)
-                            Keyframes.setCurrentIndex(selectedIndex + 1)
-                        }
-                        Layout.preferredWidth: 40
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Button {
-                        text: qsTr("Delete")
-                        onClicked: Keyframes.removeKeyframe(selectedIndex)
                     }
                 }
             }

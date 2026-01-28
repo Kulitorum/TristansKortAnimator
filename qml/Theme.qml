@@ -2,34 +2,40 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-    // Colors - Dark theme suitable for geopolitics/war content
-    readonly property color backgroundColor: "#1a1a2e"
-    readonly property color surfaceColor: "#16213e"
-    readonly property color surfaceColorLight: "#1f3460"
-    readonly property color primaryColor: "#e94560"
-    readonly property color primaryColorLight: "#ff6b6b"
-    readonly property color accentColor: "#0f3460"
-    readonly property color accentColorLight: "#1a5490"
-    readonly property color textColor: "#eaeaea"
-    readonly property color textColorDim: "#a0a0a0"
-    readonly property color textColorMuted: "#666666"
-    readonly property color borderColor: "#333355"
-    readonly property color borderColorLight: "#444477"
+    // Colors - Sleek dark theme
+    readonly property color backgroundColor: "#0a0e14"
+    readonly property color surfaceColor: "#0d151e"
+    readonly property color surfaceColorLight: "#111a24"
+    readonly property color surfaceColorAlt: "#0f1820"
+    readonly property color headerColor: "#080c12"
+    readonly property color primaryColor: "#3d9cf0"
+    readonly property color primaryColorLight: "#5ab0ff"
+    readonly property color primaryColorDark: "#2a7acc"
+    readonly property color accentColor: "#3d9cf0"
+    readonly property color accentColorLight: "#5ab0ff"
+    readonly property color dangerColor: "#ff4757"
+    readonly property color successColor: "#4CAF50"
+    readonly property color warningColor: "#FF9800"
+    readonly property color textColor: "#e0e6ed"
+    readonly property color textColorDim: "#6b7d8f"
+    readonly property color textColorMuted: "#4a5568"
+    readonly property color borderColor: "#1a2a3a"
+    readonly property color borderColorLight: "#2a3a4a"
 
     // Overlay colors for highlighting
-    readonly property color highlightRed: "#e94560"
-    readonly property color highlightBlue: "#4a90d9"
-    readonly property color highlightGreen: "#4ecdc4"
+    readonly property color highlightRed: "#ff4757"
+    readonly property color highlightBlue: "#3d9cf0"
+    readonly property color highlightGreen: "#4CAF50"
     readonly property color highlightYellow: "#f7dc6f"
-    readonly property color highlightOrange: "#f39c12"
-    readonly property color highlightPurple: "#9b59b6"
+    readonly property color highlightOrange: "#FF9800"
+    readonly property color highlightPurple: "#9C27B0"
 
     // Timeline colors
-    readonly property color timelineBackground: "#0d1b2a"
-    readonly property color timelineRuler: "#1b263b"
-    readonly property color playheadColor: "#e94560"
-    readonly property color keyframeColor: "#4ecdc4"
-    readonly property color keyframeSelectedColor: "#e94560"
+    readonly property color timelineBackground: "#0a0e14"
+    readonly property color timelineRuler: "#080c12"
+    readonly property color playheadColor: "#ff4757"
+    readonly property color keyframeColor: "#3d9cf0"
+    readonly property color keyframeSelectedColor: "#5ab0ff"
 
     // Fonts
     readonly property string fontFamily: "Segoe UI"
