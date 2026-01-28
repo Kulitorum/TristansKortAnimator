@@ -21,7 +21,7 @@ Rectangle {
     function refreshSliders() {
         if (hasKeyframe) {
             var kf = Keyframes.getKeyframe(selectedIndex)
-            if (kf) {
+            if (kf && kf.latitude !== undefined) {
                 latSlider.value = kf.latitude
                 lonSlider.value = kf.longitude
                 zoomSlider.value = kf.zoom

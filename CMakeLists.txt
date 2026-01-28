@@ -53,6 +53,7 @@ set(SOURCES
     src/map/mapcamera.cpp
     src/map/maprenderer.cpp
     src/map/geojsonparser.cpp
+    src/map/cityboundaryfetcher.cpp
     src/animation/keyframe.cpp
     src/animation/keyframemodel.cpp
     src/animation/regiontrackmodel.cpp
@@ -84,6 +85,7 @@ set(HEADERS
     src/map/mapcamera.h
     src/map/maprenderer.h
     src/map/geojsonparser.h
+    src/map/cityboundaryfetcher.h
     src/animation/keyframe.h
     src/animation/keyframemodel.h
     src/animation/regiontrack.h

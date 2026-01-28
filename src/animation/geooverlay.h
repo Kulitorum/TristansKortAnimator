@@ -35,10 +35,15 @@ struct GeoOverlay {
     bool showLabel = true;
 
     // Cached geometry (loaded from GeoJSON)
-    QVector<QPolygonF> polygons;    // For countries/regions
-    QPointF point;                   // For cities
+    QVector<QPolygonF> polygons;    // For countries/regions (and cities with boundaries)
+    QPointF point;                   // For cities (fallback if no boundary)
     double latitude = 0.0;
     double longitude = 0.0;
+
+    // City boundary data (stored for save/load)
+    QJsonArray boundaryCoordinates;     // Raw coordinates from Nominatim
+    QString boundaryGeometryType;       // "Polygon" or "MultiPolygon"
+    bool hasCityBoundary = false;       // Whether boundary has been fetched
 
     // Timeline properties
     double startTime = 0.0;         // When this overlay starts appearing (ms)
@@ -170,6 +175,12 @@ struct GeoOverlay {
         }
         obj["keyframes"] = kfArray;
 
+        // Serialize city boundary if present
+        if (hasCityBoundary && !boundaryCoordinates.isEmpty()) {
+            obj["boundaryCoordinates"] = boundaryCoordinates;
+            obj["boundaryGeometryType"] = boundaryGeometryType;
+        }
+
         return obj;
     }
 
@@ -196,6 +207,13 @@ struct GeoOverlay {
         QJsonArray kfArray = obj["keyframes"].toArray();
         for (const auto& kfVal : kfArray) {
             overlay.keyframes.append(OverlayKeyframe::fromJson(kfVal.toObject()));
+        }
+
+        // Deserialize city boundary if present
+        if (obj.contains("boundaryCoordinates")) {
+            overlay.boundaryCoordinates = obj["boundaryCoordinates"].toArray();
+            overlay.boundaryGeometryType = obj["boundaryGeometryType"].toString();
+            overlay.hasCityBoundary = !overlay.boundaryCoordinates.isEmpty();
         }
 
         return overlay;

@@ -6,6 +6,10 @@
 #include "geooverlay.h"
 
 class GeoJsonParser;
+class CityBoundaryFetcher;
+
+// Helper to convert JSON coordinates to QPolygonF
+QVector<QPolygonF> parseNominatimCoordinates(const QJsonArray& coordinates, const QString& geometryType);
 
 class GeoOverlayModel : public QAbstractListModel {
     Q_OBJECT
@@ -44,6 +48,7 @@ public:
     explicit GeoOverlayModel(QObject* parent = nullptr);
 
     void setGeoJsonParser(GeoJsonParser* parser) { m_geoJson = parser; }
+    void setCityBoundaryFetcher(CityBoundaryFetcher* fetcher);
 
     // QAbstractListModel overrides
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -109,12 +114,18 @@ signals:
     void keyframeModified(int overlayIndex, int keyframeIndex);
     void currentTimeChanged();
 
+private slots:
+    void onBoundaryReady(const QString& cityName, const QJsonArray& coordinates, const QString& geometryType);
+    void onBoundaryFetchFailed(const QString& cityName, const QString& error);
+
 private:
     void loadGeometryForOverlay(GeoOverlay& overlay);
     QString generateId(GeoOverlayType type, const QString& name);
     void sortKeyframes(int overlayIndex);
+    void loadCityBoundaryFromCache(GeoOverlay& overlay);  // Load boundary from stored JSON
 
     QVector<GeoOverlay> m_overlays;
     GeoJsonParser* m_geoJson = nullptr;
+    CityBoundaryFetcher* m_boundaryFetcher = nullptr;
     double m_currentTime = 0.0;
 };

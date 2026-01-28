@@ -17,6 +17,7 @@ class GeoJsonParser;
 class AnimationController;
 class VideoExporter;
 class FrameBuffer;
+class CityBoundaryFetcher;
 
 Q_DECLARE_OPAQUE_POINTER(Settings*)
 Q_DECLARE_OPAQUE_POINTER(FrameBuffer*)
@@ -31,6 +32,7 @@ Q_DECLARE_OPAQUE_POINTER(TileProvider*)
 Q_DECLARE_OPAQUE_POINTER(GeoJsonParser*)
 Q_DECLARE_OPAQUE_POINTER(AnimationController*)
 Q_DECLARE_OPAQUE_POINTER(VideoExporter*)
+Q_DECLARE_OPAQUE_POINTER(CityBoundaryFetcher*)
 
 class MainController : public QObject {
     Q_OBJECT
@@ -47,6 +49,7 @@ class MainController : public QObject {
     Q_PROPERTY(TileProvider* tileProvider READ tileProvider CONSTANT)
     Q_PROPERTY(GeoJsonParser* geojson READ geojson CONSTANT)
     Q_PROPERTY(FrameBuffer* frameBuffer READ frameBuffer CONSTANT)
+    Q_PROPERTY(CityBoundaryFetcher* cityBoundaryFetcher READ cityBoundaryFetcher CONSTANT)
 
 public:
     explicit MainController(QObject* parent = nullptr);
@@ -64,6 +67,7 @@ public:
     TileProvider* tileProvider() const { return m_tileProvider; }
     GeoJsonParser* geojson() const { return m_geojson; }
     FrameBuffer* frameBuffer() const { return m_frameBuffer; }
+    CityBoundaryFetcher* cityBoundaryFetcher() const { return m_cityBoundaryFetcher; }
 
     // Quick actions for QML
     Q_INVOKABLE void addKeyframeAtCurrentPosition();
@@ -107,4 +111,5 @@ private:
     AnimationController* m_animation = nullptr;
     VideoExporter* m_exporter = nullptr;
     FrameBuffer* m_frameBuffer = nullptr;
+    CityBoundaryFetcher* m_cityBoundaryFetcher = nullptr;
 };

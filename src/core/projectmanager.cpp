@@ -195,6 +195,11 @@ bool ProjectManager::loadFromFile(const QString& path) {
         QJsonObject animObj = root["animation"].toObject();
         m_animation->setExplicitDuration(animObj["explicitDuration"].toDouble(60000.0));
         m_animation->setUseExplicitDuration(animObj["useExplicitDuration"].toBool(true));
+
+        // Restore playhead position (must be done after keyframes are loaded)
+        if (animObj.contains("currentTime")) {
+            m_animation->setCurrentTime(animObj["currentTime"].toDouble(0.0));
+        }
     }
 
     return true;
@@ -221,6 +226,7 @@ bool ProjectManager::saveToFile(const QString& path) {
         QJsonObject animObj;
         animObj["explicitDuration"] = m_animation->explicitDuration();
         animObj["useExplicitDuration"] = m_animation->useExplicitDuration();
+        animObj["currentTime"] = m_animation->currentTime();  // Save playhead position
         root["animation"] = animObj;
     }
 

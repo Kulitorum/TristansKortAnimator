@@ -1,10 +1,56 @@
 #include "geooverlaymodel.h"
 #include "../map/geojsonparser.h"
+#include "../map/cityboundaryfetcher.h"
 #include <QJsonArray>
 #include <QUuid>
 #include <QFile>
 #include <QTextStream>
 #include <algorithm>
+
+// Helper function to convert Nominatim coordinates to QPolygonF
+// GeoJSON format: [lon, lat] - we store as QPointF(lat, lon) for consistency
+QVector<QPolygonF> parseNominatimCoordinates(const QJsonArray& coordinates, const QString& geometryType) {
+    QVector<QPolygonF> result;
+
+    auto parseRing = [](const QJsonArray& ring) -> QPolygonF {
+        QPolygonF polygon;
+        for (const auto& pointVal : ring) {
+            QJsonArray point = pointVal.toArray();
+            if (point.size() >= 2) {
+                double lon = point[0].toDouble();
+                double lat = point[1].toDouble();
+                polygon.append(QPointF(lat, lon));  // Store as (lat, lon)
+            }
+        }
+        return polygon;
+    };
+
+    if (geometryType == "Polygon") {
+        // Polygon: coordinates is [[ring1], [ring2], ...]
+        // We only use the outer ring (first one)
+        if (!coordinates.isEmpty()) {
+            QJsonArray outerRing = coordinates[0].toArray();
+            QPolygonF poly = parseRing(outerRing);
+            if (!poly.isEmpty()) {
+                result.append(poly);
+            }
+        }
+    } else if (geometryType == "MultiPolygon") {
+        // MultiPolygon: coordinates is [[[ring1], ...], [[ring2], ...], ...]
+        for (const auto& polygonVal : coordinates) {
+            QJsonArray polygonCoords = polygonVal.toArray();
+            if (!polygonCoords.isEmpty()) {
+                QJsonArray outerRing = polygonCoords[0].toArray();
+                QPolygonF poly = parseRing(outerRing);
+                if (!poly.isEmpty()) {
+                    result.append(poly);
+                }
+            }
+        }
+    }
+
+    return result;
+}
 
 GeoOverlayModel::GeoOverlayModel(QObject* parent)
     : QAbstractListModel(parent)
@@ -290,6 +336,12 @@ void GeoOverlayModel::addCity(const QString& name, const QString& countryName,
     endInsertRows();
     emit countChanged();
     emit dataModified();
+
+    // Fetch city boundary from Nominatim (async)
+    if (m_boundaryFetcher) {
+        qDebug() << "Fetching boundary for city:" << name << "," << countryName;
+        m_boundaryFetcher->fetchBoundary(name, countryName);
+    }
 }
 
 void GeoOverlayModel::removeOverlay(int index) {
@@ -438,6 +490,12 @@ void GeoOverlayModel::fromJson(const QJsonArray& array) {
     for (const auto& val : array) {
         GeoOverlay overlay = GeoOverlay::fromJson(val.toObject());
         loadGeometryForOverlay(overlay);
+
+        // For cities with cached boundary data, rebuild the polygons
+        if (overlay.type == GeoOverlayType::City && overlay.hasCityBoundary) {
+            loadCityBoundaryFromCache(overlay);
+        }
+
         m_overlays.append(overlay);
     }
 
@@ -623,4 +681,55 @@ void GeoOverlayModel::setCurrentTime(double timeMs) {
                           CurrentBorderColorRole, CurrentOpacityRole, CurrentScaleRole});
     }
     emit currentTimeChanged();
+}
+
+void GeoOverlayModel::setCityBoundaryFetcher(CityBoundaryFetcher* fetcher) {
+    if (m_boundaryFetcher) {
+        disconnect(m_boundaryFetcher, nullptr, this, nullptr);
+    }
+    m_boundaryFetcher = fetcher;
+    if (m_boundaryFetcher) {
+        connect(m_boundaryFetcher, &CityBoundaryFetcher::boundaryReady,
+                this, &GeoOverlayModel::onBoundaryReady);
+        connect(m_boundaryFetcher, &CityBoundaryFetcher::fetchFailed,
+                this, &GeoOverlayModel::onBoundaryFetchFailed);
+    }
+}
+
+void GeoOverlayModel::onBoundaryReady(const QString& cityName, const QJsonArray& coordinates, const QString& geometryType) {
+    // Find the overlay for this city and update its polygon data
+    for (int i = 0; i < m_overlays.size(); ++i) {
+        GeoOverlay& overlay = m_overlays[i];
+        if (overlay.type == GeoOverlayType::City && overlay.name == cityName) {
+            // Store the raw JSON data for serialization
+            overlay.boundaryCoordinates = coordinates;
+            overlay.boundaryGeometryType = geometryType;
+            overlay.hasCityBoundary = true;
+
+            // Convert to polygons for rendering
+            overlay.polygons = parseNominatimCoordinates(coordinates, geometryType);
+
+            qDebug() << "Loaded boundary for" << cityName << "with" << overlay.polygons.size() << "polygons";
+
+            // Notify of change
+            QModelIndex modelIndex = createIndex(i, 0);
+            emit dataChanged(modelIndex, modelIndex);
+            emit overlayModified(i);
+            emit dataModified();
+            break;
+        }
+    }
+}
+
+void GeoOverlayModel::onBoundaryFetchFailed(const QString& cityName, const QString& error) {
+    qWarning() << "Failed to fetch boundary for" << cityName << ":" << error;
+    // City will continue to render as a circle marker
+}
+
+void GeoOverlayModel::loadCityBoundaryFromCache(GeoOverlay& overlay) {
+    // If we have cached boundary data, convert it to polygons
+    if (overlay.hasCityBoundary && !overlay.boundaryCoordinates.isEmpty()) {
+        overlay.polygons = parseNominatimCoordinates(overlay.boundaryCoordinates, overlay.boundaryGeometryType);
+        qDebug() << "Loaded cached boundary for" << overlay.name << "with" << overlay.polygons.size() << "polygons";
+    }
 }

@@ -13,6 +13,7 @@
 #include "../animation/framebuffer.h"
 #include "../overlays/overlaymanager.h"
 #include "../export/videoexporter.h"
+#include "../map/cityboundaryfetcher.h"
 #include <QtMath>
 
 MainController::MainController(QObject* parent)
@@ -31,6 +32,7 @@ MainController::MainController(QObject* parent)
     m_animation = new AnimationController(this);
     m_exporter = new VideoExporter(this);
     m_frameBuffer = new FrameBuffer(this);
+    m_cityBoundaryFetcher = new CityBoundaryFetcher(this);
 
     // ProjectManager needs keyframes and overlays for save/load
     m_projectManager = new ProjectManager(m_keyframes, m_overlays, this);
@@ -153,6 +155,9 @@ void MainController::loadGeoJsonData() {
 
     // Set the parser on GeoOverlayModel so it can load geometry
     m_geoOverlays->setGeoJsonParser(m_geojson);
+
+    // Set the city boundary fetcher for on-demand city outline download
+    m_geoOverlays->setCityBoundaryFetcher(m_cityBoundaryFetcher);
 }
 
 void MainController::addKeyframeAtCurrentPosition() {

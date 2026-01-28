@@ -363,47 +363,100 @@ void MapRenderer::renderGeoOverlays(QPainter* painter, double currentTime, doubl
         borderColor.setAlphaF(borderColor.alphaF() * opacity);
 
         if (overlay.type == GeoOverlayType::City) {
-            // Render city as a marker circle
-            QPointF screenPoint = m_camera->geoToScreen(overlay.latitude, overlay.longitude, viewW, viewH);
+            // Check if city has boundary polygons
+            if (!overlay.polygons.isEmpty()) {
+                // Render city boundary as polygons (like countries/regions)
+                for (const QPolygonF& geoPoly : overlay.polygons) {
+                    QPolygonF screenPoly;
+                    screenPoly.reserve(geoPoly.size());
 
-            // Check if on screen
-            if (screenPoint.x() >= -50 && screenPoint.x() <= viewW + 50 &&
-                screenPoint.y() >= -50 && screenPoint.y() <= viewH + 50) {
+                    for (const QPointF& geoPoint : geoPoly) {
+                        // Polygons store (lat=x, lon=y) after parsing
+                        QPointF screenPoint = m_camera->geoToScreen(geoPoint.x(), geoPoint.y(), viewW, viewH);
+                        screenPoly.append(screenPoint);
+                    }
 
-                double radius = overlay.markerRadius;
+                    if (!screenPoly.isEmpty()) {
+                        // Draw fill
+                        if (fillColor.alpha() > 0) {
+                            painter->setPen(Qt::NoPen);
+                            painter->setBrush(fillColor);
+                            painter->drawPolygon(screenPoly);
+                        }
 
-                // Draw circle - border only if fill is transparent
-                if (fillColor.alpha() > 0) {
-                    painter->setBrush(fillColor);
-                } else {
-                    painter->setBrush(Qt::NoBrush);
+                        // Draw border
+                        painter->setPen(QPen(borderColor, overlay.borderWidth > 0 ? overlay.borderWidth : 2.0));
+                        painter->setBrush(Qt::NoBrush);
+                        painter->drawPolygon(screenPoly);
+                    }
                 }
 
-                if (borderColor.alpha() > 0) {
-                    painter->setPen(QPen(borderColor, 3));  // Thicker border for visibility
-                } else {
-                    painter->setPen(Qt::NoPen);
-                }
-                painter->drawEllipse(screenPoint, radius, radius);
-
-                // Draw label if enabled
+                // Draw label if enabled (at centroid position)
                 if (overlay.showLabel) {
-                    QColor textColor = Qt::white;
-                    textColor.setAlphaF(opacity);
+                    QPointF screenPoint = m_camera->geoToScreen(overlay.latitude, overlay.longitude, viewW, viewH);
+                    if (screenPoint.x() >= -50 && screenPoint.x() <= viewW + 50 &&
+                        screenPoint.y() >= -50 && screenPoint.y() <= viewH + 50) {
 
-                    painter->setPen(textColor);
-                    QFont font = painter->font();
-                    font.setPixelSize(11);
-                    font.setBold(true);
-                    painter->setFont(font);
+                        QColor textColor = Qt::white;
+                        textColor.setAlphaF(opacity);
 
-                    // Draw text with shadow for readability
-                    QColor shadowColor(0, 0, 0, static_cast<int>(180 * opacity));
-                    painter->setPen(shadowColor);
-                    painter->drawText(QPointF(screenPoint.x() + radius + 5 + 1, screenPoint.y() + 4 + 1), overlay.name);
+                        QFont font = painter->font();
+                        font.setPixelSize(11);
+                        font.setBold(true);
+                        painter->setFont(font);
 
-                    painter->setPen(textColor);
-                    painter->drawText(QPointF(screenPoint.x() + radius + 5, screenPoint.y() + 4), overlay.name);
+                        // Draw text with shadow for readability
+                        QColor shadowColor(0, 0, 0, static_cast<int>(180 * opacity));
+                        painter->setPen(shadowColor);
+                        painter->drawText(QPointF(screenPoint.x() + 1, screenPoint.y() + 1), overlay.name);
+
+                        painter->setPen(textColor);
+                        painter->drawText(screenPoint, overlay.name);
+                    }
+                }
+            } else {
+                // Fallback: Render city as a marker circle (no boundary data)
+                QPointF screenPoint = m_camera->geoToScreen(overlay.latitude, overlay.longitude, viewW, viewH);
+
+                // Check if on screen
+                if (screenPoint.x() >= -50 && screenPoint.x() <= viewW + 50 &&
+                    screenPoint.y() >= -50 && screenPoint.y() <= viewH + 50) {
+
+                    double radius = overlay.markerRadius;
+
+                    // Draw circle - border only if fill is transparent
+                    if (fillColor.alpha() > 0) {
+                        painter->setBrush(fillColor);
+                    } else {
+                        painter->setBrush(Qt::NoBrush);
+                    }
+
+                    if (borderColor.alpha() > 0) {
+                        painter->setPen(QPen(borderColor, 3));  // Thicker border for visibility
+                    } else {
+                        painter->setPen(Qt::NoPen);
+                    }
+                    painter->drawEllipse(screenPoint, radius, radius);
+
+                    // Draw label if enabled
+                    if (overlay.showLabel) {
+                        QColor textColor = Qt::white;
+                        textColor.setAlphaF(opacity);
+
+                        painter->setPen(textColor);
+                        QFont font = painter->font();
+                        font.setPixelSize(11);
+                        font.setBold(true);
+                        painter->setFont(font);
+
+                        // Draw text with shadow for readability
+                        QColor shadowColor(0, 0, 0, static_cast<int>(180 * opacity));
+                        painter->setPen(shadowColor);
+                        painter->drawText(QPointF(screenPoint.x() + radius + 5 + 1, screenPoint.y() + 4 + 1), overlay.name);
+
+                        painter->setPen(textColor);
+                        painter->drawText(QPointF(screenPoint.x() + radius + 5, screenPoint.y() + 4), overlay.name);
+                    }
                 }
             }
         } else {
