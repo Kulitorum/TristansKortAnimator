@@ -21,7 +21,7 @@ QVariant KeyframeModel::data(const QModelIndex& index, int role) const {
     switch (role) {
         case LatitudeRole: return kf.latitude;
         case LongitudeRole: return kf.longitude;
-        case ZoomRole: return kf.zoom;
+        case ZoomRole: return kf.zoom();  // Derived from altitude
         case BearingRole: return kf.bearing;
         case TiltRole: return kf.tilt;
         case TimeRole: return kf.timeMs;
@@ -50,8 +50,8 @@ bool KeyframeModel::setData(const QModelIndex& index, const QVariant& value, int
             }
             break;
         case ZoomRole:
-            if (kf.zoom != value.toDouble()) {
-                kf.zoom = value.toDouble();
+            if (kf.zoom() != value.toDouble()) {
+                kf.setZoom(value.toDouble());  // Converts to altitude
                 changed = true;
             }
             break;
@@ -111,7 +111,7 @@ void KeyframeModel::addKeyframeAtTime(double lat, double lon, double zoom, doubl
     Keyframe kf;
     kf.latitude = lat;
     kf.longitude = lon;
-    kf.zoom = zoom;
+    kf.setZoom(zoom);  // Converts zoom to altitude internally
     kf.bearing = bearing;
     kf.tilt = tilt;
     kf.timeMs = snapToFrame(qMax(0.0, timeMs));
@@ -199,7 +199,7 @@ void KeyframeModel::updateKeyframe(int index, const QVariantMap& data) {
 
     if (data.contains("latitude")) kf.latitude = data["latitude"].toDouble();
     if (data.contains("longitude")) kf.longitude = data["longitude"].toDouble();
-    if (data.contains("zoom")) kf.zoom = data["zoom"].toDouble();
+    if (data.contains("zoom")) kf.setZoom(data["zoom"].toDouble());
     if (data.contains("bearing")) kf.bearing = data["bearing"].toDouble();
     if (data.contains("tilt")) kf.tilt = data["tilt"].toDouble();
     if (data.contains("time")) {
@@ -222,7 +222,7 @@ QVariantMap KeyframeModel::getKeyframe(int index) const {
     return {
         {"latitude", kf.latitude},
         {"longitude", kf.longitude},
-        {"zoom", kf.zoom},
+        {"zoom", kf.zoom()},  // Derived from altitude
         {"bearing", kf.bearing},
         {"tilt", kf.tilt},
         {"time", kf.timeMs}
@@ -289,7 +289,7 @@ void KeyframeModel::updateCurrentPosition(double lat, double lon, double zoom, d
 
     if (kf.latitude != lat) { kf.latitude = lat; changed = true; }
     if (kf.longitude != lon) { kf.longitude = lon; changed = true; }
-    if (kf.zoom != zoom) { kf.zoom = zoom; changed = true; }
+    if (kf.zoom() != zoom) { kf.setZoom(zoom); changed = true; }
     if (kf.bearing != bearing) { kf.bearing = bearing; changed = true; }
     if (kf.tilt != tilt) { kf.tilt = tilt; changed = true; }
 

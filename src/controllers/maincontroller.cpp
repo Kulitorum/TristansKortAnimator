@@ -98,7 +98,7 @@ void MainController::setupConnections() {
     connect(m_keyframes, &KeyframeModel::keyframeSelected, this, [this](int index) {
         if (index >= 0 && index < m_keyframes->count()) {
             const auto& kf = m_keyframes->at(index);
-            m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
+            m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom(), kf.bearing, kf.tilt);
         }
     });
 
@@ -193,7 +193,7 @@ void MainController::goToKeyframe(int index) {
     if (index < 0 || index >= m_keyframes->count()) return;
 
     const auto& kf = m_keyframes->at(index);
-    m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
+    m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom(), kf.bearing, kf.tilt);
     m_keyframes->setCurrentIndex(index);
     m_keyframes->setEditMode(true);  // Enable edit mode when navigating to a keyframe
 }
@@ -278,7 +278,7 @@ void MainController::precacheTilesForKeyframe(int index) {
     if (index < 0 || index >= m_keyframes->count()) return;
 
     const auto& kf = m_keyframes->at(index);
-    precacheTilesForPosition(kf.latitude, kf.longitude, kf.zoom);
+    precacheTilesForPosition(kf.latitude, kf.longitude, kf.zoom());
 }
 
 void MainController::precacheAllKeyframes() {

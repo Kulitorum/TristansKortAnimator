@@ -13,32 +13,14 @@ CameraState Interpolator::interpolate(const Keyframe& from, const Keyframe& to, 
 
     CameraState state;
 
-    double zoomDelta = to.zoom - from.zoom;
-
-    // When there's significant zoom change, adjust position timing
-    // to prevent "zoom then pan" or "pan then zoom" visual artifacts
-    double positionT = easedT;
-
-    if (std::abs(zoomDelta) > 1.0) {
-        // Calculate how much the scale changes
-        double scaleRatio = std::pow(2.0, std::abs(zoomDelta));
-
-        if (zoomDelta > 0) {
-            // Zooming IN: position should LEAD zoom
-            // Use sqrt to make position reach target faster
-            positionT = std::sqrt(easedT);
-        } else {
-            // Zooming OUT: position should LAG zoom
-            // Use square to make position start slower
-            positionT = easedT * easedT;
-        }
-    }
-
-    state.latitude = from.latitude + (to.latitude - from.latitude) * positionT;
-    state.longitude = interpolateLongitude(from.longitude, to.longitude, positionT);
+    // Simple linear interpolation of all properties including altitude
+    // Because altitude is linear (not logarithmic like zoom), this produces
+    // smooth, natural camera paths where position and "zoom" change together
+    state.latitude = from.latitude + (to.latitude - from.latitude) * easedT;
+    state.longitude = interpolateLongitude(from.longitude, to.longitude, easedT);
+    state.altitude = from.altitude + (to.altitude - from.altitude) * easedT;
     state.bearing = interpolateBearing(from.bearing, to.bearing, easedT);
     state.tilt = from.tilt + (to.tilt - from.tilt) * easedT;
-    state.zoom = from.zoom + zoomDelta * easedT;
 
     return state;
 }

@@ -7,9 +7,14 @@
 struct CameraState {
     double latitude;
     double longitude;
-    double zoom;
+    double altitude;  // Height above surface in meters
     double bearing;
     double tilt;
+
+    // Derive zoom from altitude for rendering
+    double zoom() const {
+        return Keyframe::altitudeToZoom(altitude);
+    }
 };
 
 class Interpolator : public QObject {

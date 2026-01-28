@@ -196,7 +196,7 @@ void AnimationController::updateCameraFromTime(double timeMs) {
     // Handle single keyframe case
     if (m_keyframes->count() == 1) {
         const auto& kf = m_keyframes->at(0);
-        m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
+        m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom(), kf.bearing, kf.tilt);
         m_seeking = false;
         return;
     }
@@ -209,7 +209,7 @@ void AnimationController::updateCameraFromTime(double timeMs) {
     if (fromIndex < 0 || fromIndex == toIndex) {
         if (fromIndex >= 0) {
             const auto& kf = m_keyframes->at(fromIndex);
-            m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom, kf.bearing, kf.tilt);
+            m_camera->setPosition(kf.latitude, kf.longitude, kf.zoom(), kf.bearing, kf.tilt);
         }
         m_seeking = false;
         return;
@@ -221,7 +221,8 @@ void AnimationController::updateCameraFromTime(double timeMs) {
 
     CameraState state = m_interpolator->interpolate(from, to, progress);
 
-    m_camera->setPosition(state.latitude, state.longitude, state.zoom,
+    // CameraState.zoom() derives zoom from altitude
+    m_camera->setPosition(state.latitude, state.longitude, state.zoom(),
                           state.bearing, state.tilt);
     m_seeking = false;
 }
