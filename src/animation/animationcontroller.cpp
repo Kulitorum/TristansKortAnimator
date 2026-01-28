@@ -169,13 +169,20 @@ void AnimationController::tick() {
 
     // Advance time
     double newTime = m_currentTimeMs + deltaMs * m_playbackSpeed;
-    double duration = totalDuration();
 
-    if (duration > 0 && newTime >= duration) {
-        if (m_looping) {
-            newTime = std::fmod(newTime, duration);
-        } else {
-            newTime = duration;
+    // Get both durations
+    double keyframeDuration = m_keyframes ? m_keyframes->totalDuration() : 0.0;
+    double explicitDuration = totalDuration();
+
+    if (m_looping) {
+        // Loop at last keyframe time
+        if (keyframeDuration > 0 && newTime >= keyframeDuration) {
+            newTime = std::fmod(newTime, keyframeDuration);
+        }
+    } else {
+        // Stop at chosen duration
+        if (explicitDuration > 0 && newTime >= explicitDuration) {
+            newTime = explicitDuration;
             pause();
             emit animationComplete();
         }
