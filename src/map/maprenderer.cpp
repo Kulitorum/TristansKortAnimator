@@ -146,8 +146,8 @@ void MapRenderer::renderTiles(QPainter* painter) {
             double tileSize = TILE_SIZE * scale;
 
             QImage tile;
-            if (m_tileCache && m_tileCache->contains(source, tx, ty, preferredZoom)) {
-                // Exact tile available - use it
+            if (m_tileCache) {
+                // Try memory cache, then disk cache
                 tile = m_tileCache->get(source, tx, ty, preferredZoom);
             }
 
@@ -191,7 +191,7 @@ bool MapRenderer::tryRenderFallbackTile(QPainter* painter, int tx, int ty, int t
         int parentTx = tx / divisor;
         int parentTy = ty / divisor;
 
-        if (m_tileCache->contains(source, parentTx, parentTy, fallbackZoom)) {
+        {
             QImage parentTile = m_tileCache->get(source, parentTx, parentTy, fallbackZoom);
             if (parentTile.isNull()) continue;
 

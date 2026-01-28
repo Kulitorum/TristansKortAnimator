@@ -836,6 +836,80 @@ Item {
                         }
                     }
 
+                    // Fade in duration handle (internal)
+                    Rectangle {
+                        z: 5
+                        visible: overlayBar.width > 40
+                        x: Math.min(overlayBar.width * 0.4, trackFadeIn * pixelsPerSecond / 1000) - 1
+                        y: 0
+                        width: 2
+                        height: parent.height
+                        color: fadeInMouse.containsMouse || fadeInMouse.pressed ? "#ffffff" : (trackFadeIn > 0 ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
+
+                        MouseArea {
+                            id: fadeInMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeHorCursor
+                            acceptedButtons: Qt.LeftButton
+                            property real dragStartX: 0
+                            property real origFadeIn: 0
+
+                            onPressed: (mouse) => {
+                                let globalPos = mapToItem(overlayTrackContent, mouse.x, 0)
+                                dragStartX = globalPos.x
+                                origFadeIn = trackFadeIn
+                            }
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let globalPos = mapToItem(overlayTrackContent, mouse.x, 0)
+                                    let delta = (globalPos.x - dragStartX) / pixelsPerSecond * 1000
+                                    let maxFadeIn = trackEndTime - trackStartTime - trackFadeOut
+                                    let newFadeIn = Math.max(0, Math.min(maxFadeIn, origFadeIn + delta))
+                                    GeoOverlays.setOverlayTiming(overlayIdx, trackStartTime, newFadeIn, trackEndTime, trackFadeOut)
+                                }
+                            }
+                        }
+                    }
+
+                    // Fade out duration handle (internal)
+                    Rectangle {
+                        z: 5
+                        visible: overlayBar.width > 40
+                        x: parent.width - Math.min(overlayBar.width * 0.4, trackFadeOut * pixelsPerSecond / 1000) - 1
+                        y: 0
+                        width: 2
+                        height: parent.height
+                        color: fadeOutMouse.containsMouse || fadeOutMouse.pressed ? "#ffffff" : (trackFadeOut > 0 ? Qt.rgba(1, 1, 1, 0.4) : "transparent")
+
+                        MouseArea {
+                            id: fadeOutMouse
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            hoverEnabled: true
+                            cursorShape: Qt.SizeHorCursor
+                            acceptedButtons: Qt.LeftButton
+                            property real dragStartX: 0
+                            property real origFadeOut: 0
+
+                            onPressed: (mouse) => {
+                                let globalPos = mapToItem(overlayTrackContent, mouse.x, 0)
+                                dragStartX = globalPos.x
+                                origFadeOut = trackFadeOut
+                            }
+                            onPositionChanged: (mouse) => {
+                                if (pressed) {
+                                    let globalPos = mapToItem(overlayTrackContent, mouse.x, 0)
+                                    let delta = (globalPos.x - dragStartX) / pixelsPerSecond * 1000
+                                    let maxFadeOut = trackEndTime - trackStartTime - trackFadeIn
+                                    let newFadeOut = Math.max(0, Math.min(maxFadeOut, origFadeOut - delta))
+                                    GeoOverlays.setOverlayTiming(overlayIdx, trackStartTime, trackFadeIn, trackEndTime, newFadeOut)
+                                }
+                            }
+                        }
+                    }
+
                     // Overlay name on bar
                     Text {
                         visible: parent.width > 60
@@ -852,6 +926,7 @@ Item {
 
                     // Left trim handle
                     Rectangle {
+                        z: 6
                         width: 5
                         height: parent.height
                         anchors.left: parent.left
@@ -887,6 +962,7 @@ Item {
 
                     // Right trim handle
                     Rectangle {
+                        z: 6
                         width: 5
                         height: parent.height
                         anchors.right: parent.right
@@ -1052,55 +1128,21 @@ Item {
         MouseArea {
             anchors.fill: parent
             z: -1
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-
-            property real panStartX: 0
-            property real panStartY: 0
-            property real panStartContentX: 0
-            property real panStartContentY: 0
-            property bool isDragging: false
+            acceptedButtons: Qt.LeftButton
 
             onPressed: (mouse) => {
                 timeline.forceActiveFocus()
                 Keyframes.editMode = false
-                panStartX = mouse.x
-                panStartY = mouse.y
-                panStartContentX = timelineContent.contentX
-                panStartContentY = timelineContent.contentY
-                isDragging = false
 
                 // Set playhead on click
-                if (mouse.button === Qt.LeftButton) {
-                    let time = mouse.x / pixelsPerSecond * 1000
-                    AnimController.setCurrentTime(Math.max(0, time))
-                }
+                let time = mouse.x / pixelsPerSecond * 1000
+                AnimController.setCurrentTime(Math.max(0, time))
             }
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    let deltaX = panStartX - mouse.x
-                    let deltaY = panStartY - mouse.y
-
-                    // Start dragging if moved more than 5 pixels
-                    if (!isDragging && (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5)) {
-                        isDragging = true
-                        cursorShape = Qt.ClosedHandCursor
-                    }
-
-                    if (isDragging) {
-                        timelineContent.contentX = Math.max(0, Math.min(
-                            timelineContent.contentWidth - timelineContent.width,
-                            panStartContentX + deltaX
-                        ))
-                        timelineContent.contentY = Math.max(0, Math.min(
-                            timelineContent.contentHeight - timelineContent.height,
-                            panStartContentY + deltaY
-                        ))
-                    }
+                    let time = mouse.x / pixelsPerSecond * 1000
+                    AnimController.setCurrentTime(Math.max(0, time))
                 }
-            }
-            onReleased: {
-                cursorShape = Qt.ArrowCursor
-                isDragging = false
             }
 
             onWheel: (wheel) => {
