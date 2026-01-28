@@ -157,7 +157,10 @@ int MapCamera::zoomLevel() const {
 }
 
 MapCamera::TileRange MapCamera::visibleTileRange(double viewWidth, double viewHeight) const {
-    int z = zoomLevel();
+    return visibleTileRangeAtZoom(viewWidth, viewHeight, zoomLevel());
+}
+
+MapCamera::TileRange MapCamera::visibleTileRangeAtZoom(double viewWidth, double viewHeight, int z) const {
     int maxTile = (1 << z) - 1;
 
     // Get corners of viewport in geo coordinates

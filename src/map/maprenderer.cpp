@@ -97,16 +97,28 @@ void MapRenderer::resetTransforms(QPainter* painter) {
 void MapRenderer::renderTiles(QPainter* painter) {
     if (!m_camera || !m_tileProvider) return;
 
+    // Enable smooth scaling for better quality during zoom transitions
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    double zoom = m_camera->zoom();
     int zoomLevel = m_camera->zoomLevel();
-    double scale = std::pow(2.0, m_camera->zoom() - zoomLevel);
+    double scale = std::pow(2.0, zoom - zoomLevel);
 
-    // Get visible tile range
-    auto range = m_camera->visibleTileRange(width(), height());
+    // When scale > 1.5, try to use higher zoom level tiles (scale down instead of up)
+    // Scaling down produces better quality than scaling up
+    int preferredZoom = zoomLevel;
+    if (scale > 1.5 && zoomLevel < 19) {
+        preferredZoom = zoomLevel + 1;
+        scale = std::pow(2.0, zoom - preferredZoom);  // Will be 0.5 to 0.75
+    }
 
-    // Calculate center tile position
+    // Get visible tile range (use preferred zoom for tile coordinates)
+    auto range = m_camera->visibleTileRangeAtZoom(width(), height(), preferredZoom);
+
+    // Calculate center tile position at preferred zoom level
     double centerLon = m_camera->longitude();
     double centerLat = m_camera->latitude();
-    double n = std::pow(2.0, zoomLevel);
+    double n = std::pow(2.0, preferredZoom);
 
     double centerTileX = (centerLon + 180.0) / 360.0 * n;
     double latRad = centerLat * M_PI / 180.0;
@@ -131,9 +143,9 @@ void MapRenderer::renderTiles(QPainter* painter) {
             double tileSize = TILE_SIZE * scale;
 
             QImage tile;
-            if (m_tileCache && m_tileCache->contains(source, tx, ty, zoomLevel)) {
+            if (m_tileCache && m_tileCache->contains(source, tx, ty, preferredZoom)) {
                 // Exact tile available - use it
-                tile = m_tileCache->get(source, tx, ty, zoomLevel);
+                tile = m_tileCache->get(source, tx, ty, preferredZoom);
             }
 
             if (!tile.isNull()) {
@@ -141,13 +153,13 @@ void MapRenderer::renderTiles(QPainter* painter) {
                 painter->drawImage(destRect, tile);
             } else {
                 // Try to render a fallback tile from a lower zoom level
-                bool hasFallback = tryRenderFallbackTile(painter, tx, ty, zoomLevel,
+                bool hasFallback = tryRenderFallbackTile(painter, tx, ty, preferredZoom,
                                                           screenX, screenY, tileSize, source);
 
                 // Request the correct tile in background
                 QMetaObject::invokeMethod(m_tileProvider, "requestTile",
                                           Qt::QueuedConnection,
-                                          Q_ARG(int, tx), Q_ARG(int, ty), Q_ARG(int, zoomLevel));
+                                          Q_ARG(int, tx), Q_ARG(int, ty), Q_ARG(int, preferredZoom));
 
                 // Only show placeholder if no fallback was found
                 if (!hasFallback) {

@@ -47,6 +47,7 @@ public:
         int minX, maxX, minY, maxY, zoom;
     };
     TileRange visibleTileRange(double viewWidth, double viewHeight) const;
+    TileRange visibleTileRangeAtZoom(double viewWidth, double viewHeight, int zoomLevel) const;
 
 signals:
     void latitudeChanged();
