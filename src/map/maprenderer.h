@@ -132,6 +132,8 @@ private slots:
 
 private:
     void renderTiles(QPainter* painter);
+    bool tryRenderFallbackTile(QPainter* painter, int tx, int ty, int targetZoom,
+                               double screenX, double screenY, double tileSize, int source);
     void renderHighlights(QPainter* painter);
     void renderRegionTracks(QPainter* painter, double currentTime, double totalDuration);
     void renderGeoOverlays(QPainter* painter, double currentTime, double totalDuration);

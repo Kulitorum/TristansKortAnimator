@@ -119,39 +119,86 @@ void MapRenderer::renderTiles(QPainter* painter) {
     int centerTileXInt = static_cast<int>(std::floor(centerTileX));
     int centerTileYInt = static_cast<int>(std::floor(centerTileY));
 
+    // Get tile source
+    int source = m_tileProvider->currentSource();
+
     // Render tiles
     for (int ty = range.minY; ty <= range.maxY; ty++) {
         for (int tx = range.minX; tx <= range.maxX; tx++) {
             // Calculate screen position for this tile
             double screenX = width() / 2.0 + (tx - centerTileXInt) * TILE_SIZE * scale - offsetX;
             double screenY = height() / 2.0 + (ty - centerTileYInt) * TILE_SIZE * scale - offsetY;
-
-            // Check cache first
-            int source = static_cast<int>(TileSource::EsriSatellite);
-            if (m_tileProvider) {
-                source = m_tileProvider->currentSource();
-            }
+            double tileSize = TILE_SIZE * scale;
 
             QImage tile;
             if (m_tileCache && m_tileCache->contains(source, tx, ty, zoomLevel)) {
+                // Exact tile available - use it
                 tile = m_tileCache->get(source, tx, ty, zoomLevel);
-            } else if (m_tileProvider) {
-                // Request tile from provider (use queued connection for thread safety)
-                QMetaObject::invokeMethod(m_tileProvider, "requestTile",
-                                          Qt::QueuedConnection,
-                                          Q_ARG(int, tx), Q_ARG(int, ty), Q_ARG(int, zoomLevel));
-                // Draw placeholder
-                painter->fillRect(QRectF(screenX, screenY, TILE_SIZE * scale, TILE_SIZE * scale),
-                                 QColor(30, 30, 50));
-                continue;
             }
 
             if (!tile.isNull()) {
-                QRectF destRect(screenX, screenY, TILE_SIZE * scale, TILE_SIZE * scale);
+                QRectF destRect(screenX, screenY, tileSize, tileSize);
                 painter->drawImage(destRect, tile);
+            } else {
+                // Try to render a fallback tile from a lower zoom level
+                bool hasFallback = tryRenderFallbackTile(painter, tx, ty, zoomLevel,
+                                                          screenX, screenY, tileSize, source);
+
+                // Request the correct tile in background
+                QMetaObject::invokeMethod(m_tileProvider, "requestTile",
+                                          Qt::QueuedConnection,
+                                          Q_ARG(int, tx), Q_ARG(int, ty), Q_ARG(int, zoomLevel));
+
+                // Only show placeholder if no fallback was found
+                if (!hasFallback) {
+                    painter->fillRect(QRectF(screenX, screenY, tileSize, tileSize),
+                                     QColor(30, 30, 50));
+                }
             }
         }
     }
+}
+
+bool MapRenderer::tryRenderFallbackTile(QPainter* painter, int tx, int ty, int targetZoom,
+                                         double screenX, double screenY, double tileSize, int source) {
+    if (!m_tileCache) return false;
+
+    // Try parent zoom levels (lower zoom = larger area per tile)
+    // Each zoom level down covers 4x the area (2x in each dimension)
+    for (int fallbackZoom = targetZoom - 1; fallbackZoom >= qMax(0, targetZoom - 4); fallbackZoom--) {
+        // Calculate which tile at fallbackZoom contains our target tile
+        int zoomDiff = targetZoom - fallbackZoom;
+        int divisor = 1 << zoomDiff;  // 2^zoomDiff
+
+        int parentTx = tx / divisor;
+        int parentTy = ty / divisor;
+
+        if (m_tileCache->contains(source, parentTx, parentTy, fallbackZoom)) {
+            QImage parentTile = m_tileCache->get(source, parentTx, parentTy, fallbackZoom);
+            if (parentTile.isNull()) continue;
+
+            // Calculate which portion of the parent tile to use
+            // Each parent tile is divided into divisor x divisor sub-tiles
+            int subTileX = tx % divisor;  // Which column within the parent
+            int subTileY = ty % divisor;  // Which row within the parent
+
+            int subTileSize = TILE_SIZE / divisor;
+            int srcX = subTileX * subTileSize;
+            int srcY = subTileY * subTileSize;
+
+            // Extract the relevant portion and scale it up
+            QRectF srcRect(srcX, srcY, subTileSize, subTileSize);
+            QRectF destRect(screenX, screenY, tileSize, tileSize);
+
+            // Use smooth scaling for better quality
+            painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+            painter->drawImage(destRect, parentTile, srcRect);
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void MapRenderer::renderHighlights(QPainter* painter) {
