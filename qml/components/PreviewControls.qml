@@ -96,21 +96,24 @@ Rectangle {
             }
         }
 
-        // Loop toggle
+        // Loop toggle - manual toggle to avoid binding conflicts
         Button {
+            id: loopButton
             text: "🔁"
             font.pixelSize: 16
             implicitWidth: 40
-            checkable: true
-            checked: AnimController.looping
-            onToggled: AnimController.looping = checked
+
+            // Click directly toggles the AnimController property
+            onClicked: AnimController.looping = !AnimController.looping
 
             ToolTip.visible: hovered
-            ToolTip.text: qsTr("Loop animation")
+            ToolTip.text: AnimController.looping ? qsTr("Looping ON - click to disable") : qsTr("Looping OFF - click to enable")
 
             background: Rectangle {
-                color: parent.checked ? Theme.primaryColor : Theme.surfaceColorLight
+                color: AnimController.looping ? Theme.primaryColor : Theme.surfaceColorLight
                 radius: Theme.radiusSmall
+                border.color: AnimController.looping ? Theme.primaryColorLight : Theme.borderColor
+                border.width: AnimController.looping ? 2 : 1
             }
         }
 

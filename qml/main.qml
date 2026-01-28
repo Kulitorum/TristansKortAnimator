@@ -200,13 +200,6 @@ ApplicationWindow {
                 shortcut: "Page Down"
                 onTriggered: AnimController.stepForward()
             }
-            MenuSeparator {}
-            Action {
-                text: qsTr("&Loop")
-                checkable: true
-                checked: AnimController.looping
-                onToggled: AnimController.looping = checked
-            }
         }
         Menu {
             title: qsTr("&Help")
