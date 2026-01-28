@@ -135,6 +135,9 @@ void MapRenderer::renderTiles(QPainter* painter) {
     int source = m_tileProvider->currentSource();
 
     // Render tiles
+    // Add small overlap to prevent seams between tiles (floating-point precision issue)
+    constexpr double TILE_OVERLAP = 0.5;
+
     for (int ty = range.minY; ty <= range.maxY; ty++) {
         for (int tx = range.minX; tx <= range.maxX; tx++) {
             // Calculate screen position for this tile
@@ -149,7 +152,9 @@ void MapRenderer::renderTiles(QPainter* painter) {
             }
 
             if (!tile.isNull()) {
-                QRectF destRect(screenX, screenY, tileSize, tileSize);
+                // Slightly expand the destination rect to eliminate seams
+                QRectF destRect(screenX - TILE_OVERLAP, screenY - TILE_OVERLAP,
+                               tileSize + TILE_OVERLAP * 2, tileSize + TILE_OVERLAP * 2);
                 painter->drawImage(destRect, tile);
             } else {
                 // Try to render a fallback tile from a lower zoom level
@@ -163,7 +168,8 @@ void MapRenderer::renderTiles(QPainter* painter) {
 
                 // Only show placeholder if no fallback was found
                 if (!hasFallback) {
-                    painter->fillRect(QRectF(screenX, screenY, tileSize, tileSize),
+                    painter->fillRect(QRectF(screenX - TILE_OVERLAP, screenY - TILE_OVERLAP,
+                                            tileSize + TILE_OVERLAP * 2, tileSize + TILE_OVERLAP * 2),
                                      QColor(30, 30, 50));
                 }
             }
@@ -199,8 +205,11 @@ bool MapRenderer::tryRenderFallbackTile(QPainter* painter, int tx, int ty, int t
             int srcY = subTileY * subTileSize;
 
             // Extract the relevant portion and scale it up
+            // Add small overlap to prevent seams (same as regular tiles)
+            constexpr double TILE_OVERLAP = 0.5;
             QRectF srcRect(srcX, srcY, subTileSize, subTileSize);
-            QRectF destRect(screenX, screenY, tileSize, tileSize);
+            QRectF destRect(screenX - TILE_OVERLAP, screenY - TILE_OVERLAP,
+                           tileSize + TILE_OVERLAP * 2, tileSize + TILE_OVERLAP * 2);
 
             // Use smooth scaling for better quality
             painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
