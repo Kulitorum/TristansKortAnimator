@@ -900,49 +900,6 @@ Item {
                 Layout.alignment: Qt.AlignVCenter
             }
 
-            // Checkbox for fixed duration
-            CheckBox {
-                id: fixedCheck
-                checked: useExplicitDuration
-                onCheckedChanged: {
-                    if (AnimController) {
-                        AnimController.useExplicitDuration = checked
-                    }
-                }
-
-                indicator: Rectangle {
-                    implicitWidth: 14
-                    implicitHeight: 14
-                    x: fixedCheck.leftPadding
-                    y: parent.height / 2 - height / 2
-                    radius: 2
-                    color: "transparent"
-                    border.color: fixedCheck.checked ? Theme.primaryColor : Theme.textColorDim
-
-                    Rectangle {
-                        width: 8
-                        height: 8
-                        x: 3
-                        y: 3
-                        radius: 1
-                        color: Theme.primaryColor
-                        visible: fixedCheck.checked
-                    }
-                }
-
-                contentItem: Text {
-                    text: "Fixed"
-                    font.pixelSize: 11
-                    color: Theme.textColorDim
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: fixedCheck.indicator.width + 4
-                }
-
-                ToolTip.visible: hovered
-                ToolTip.delay: 500
-                ToolTip.text: "Fixed: use set duration\nOff: auto from last keyframe"
-            }
-
             Item { Layout.fillWidth: true }
 
             // Current time / total
