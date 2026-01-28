@@ -101,9 +101,9 @@ Rectangle {
             text: "🔁"
             font.pixelSize: 16
             implicitWidth: 40
-            checked: AnimController ? AnimController.looping : false
             checkable: true
-            onClicked: if (AnimController) AnimController.looping = checked
+            checked: AnimController.looping
+            onToggled: AnimController.looping = checked
 
             ToolTip.visible: hovered
             ToolTip.text: qsTr("Loop animation")

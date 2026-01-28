@@ -204,8 +204,8 @@ ApplicationWindow {
             Action {
                 text: qsTr("&Loop")
                 checkable: true
-                checked: AnimController ? AnimController.looping : false
-                onTriggered: if (AnimController) AnimController.looping = checked
+                checked: AnimController.looping
+                onToggled: AnimController.looping = checked
             }
         }
         Menu {
