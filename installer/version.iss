@@ -1,5 +1,0 @@
-#define VersionNumber "1.0.0"
-#define TargetName "TristansKortAnimator"
-#define TargetArch "x64"
-#define TargetProduct "Tristans Kort Animator"
-#define TargetCompany "Tristan"
